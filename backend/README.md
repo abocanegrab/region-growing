@@ -1,6 +1,6 @@
 # Backend - Sistema de Detección de Estrés Vegetal
 
-API Flask para análisis de estrés vegetal mediante Region Growing sobre imágenes satelitales Sentinel-2.
+API FastAPI para análisis de estrés vegetal mediante Region Growing sobre imágenes satelitales Sentinel-2.
 
 ## Descripción General
 
@@ -11,107 +11,140 @@ Este backend implementa un pipeline completo de procesamiento de imágenes satel
 4. **Clasificación** de regiones por nivel de estrés vegetal
 5. **Conversión geoespacial** a GeoJSON para visualización
 
+## 🚀 Migración a FastAPI + Poetry
+
+**Versión 2.0** - Migrado de Flask a FastAPI con Poetry para gestión de dependencias.
+**Versión 2.0.1** - Mejoras de logging y timeouts para producción.
+
+### ¿Por qué FastAPI?
+- ⚡ **3-4x más rápido** que Flask (ASGI vs WSGI)
+- 📝 **Documentación automática** con Swagger UI y ReDoc
+- 🔒 **Validación automática** con Pydantic
+- ✅ **Type safety** nativo
+- ⚙️ **Async/await** para mejor rendimiento con APIs externas
+
+### ¿Por qué Poetry?
+- 📦 **Gestión moderna** de dependencias Python
+- 🔒 **Lock file** para reproducibilidad exacta
+- 🎯 **Resolución determinística** de dependencias
+- 🚀 **Entornos virtuales automáticos**
+
+### ✨ Nuevas Mejoras (v2.0.1)
+- 📊 **Logging profesional** con Python logging module
+- ⏱️ **Timeouts configurables** para prevenir requests colgadas
+- 🔍 **Mejor observabilidad** con logs estructurados
+- 🛡️ **Manejo de errores mejorado** con mensajes claros
+
+Ver detalles en: [LOGGING_AND_TIMEOUT_IMPROVEMENTS.md](./LOGGING_AND_TIMEOUT_IMPROVEMENTS.md)
+
 ## Estructura del Proyecto
 
 ```
 backend/
 ├── app/
-│   ├── __init__.py                           # Factory de Flask app con CORS
-│   ├── controllers/
-│   │   └── analysis_controller.py            # Endpoints REST API
+│   ├── main.py                               # FastAPI application
+│   ├── api/
+│   │   ├── routes/
+│   │   │   ├── health.py                     # Health check endpoints
+│   │   │   └── analysis.py                   # Analysis endpoints
+│   │   └── schemas/
+│   │       ├── requests.py                   # Pydantic request models
+│   │       └── responses.py                  # Pydantic response models
 │   ├── services/
-│   │   ├── region_growing_service.py         # Orquestador principal del análisis
-│   │   ├── sentinel_hub_service.py           # Integración con Sentinel Hub API
-│   │   ├── ndvi_service.py                   # Cálculo de índices de vegetación
-│   │   ├── region_growing_algorithm.py       # Implementación del algoritmo
-│   │   └── geo_converter_service.py          # Conversión píxel → coordenadas
-│   └── entities/                             # Modelos de datos (futuro)
+│   │   ├── region_growing_service.py         # Main analysis orchestrator
+│   │   ├── sentinel_hub_service.py           # Sentinel Hub API integration
+│   │   ├── ndvi_service.py                   # Vegetation indices calculation
+│   │   ├── region_growing_algorithm.py       # Region Growing algorithm
+│   │   └── geo_converter_service.py          # Pixel → coordinate conversion
+│   └── utils/                                # Utilities
+│       ├── logging_config.py                  # Centralized logging setup
+│       └── timeout.py                         # Timeout utilities
 ├── config/
-│   └── config.py                             # Configuración desde .env
-├── app.py                                    # Punto de entrada
-├── requirements.txt                          # Dependencias
-└── .env                                      # Variables de entorno (crear desde ejemplo)
+│   └── config.py                             # Pydantic Settings configuration
+├── tests/
+│   ├── test_health.py                        # Health endpoint tests
+│   └── test_analysis.py                      # Analysis endpoint tests
+├── app.py                                    # Entry point (Uvicorn)
+├── pyproject.toml                            # Poetry configuration
+├── poetry.lock                               # Dependency lock file
+└── .env                                      # Environment variables
 ```
 
 ## Tecnologías y Librerías
 
 | Librería | Versión | Uso |
 |----------|---------|-----|
-| Flask | 3.0+ | Framework web |
-| sentinelhub | 3.11+ | Cliente API Sentinel Hub |
-| NumPy | 2.3+ | Operaciones matriciales y cálculo NDVI |
-| OpenCV | 4.9+ | Detección de contornos |
-| Shapely | 2.0+ | Geometría y simplificación de polígonos |
-| Pillow | 11.0+ | Generación de imágenes RGB/NDVI |
-| flask-cors | 4.0+ | CORS para comunicación con frontend |
-| flasgger | 0.9+ | Documentación API automática (Swagger) |
+| **FastAPI** | 0.109+ | Modern web framework with automatic docs |
+| **Uvicorn** | 0.27+ | ASGI server for FastAPI |
+| **Pydantic** | 2.5+ | Data validation and settings management |
+| sentinelhub | 3.10+ | Sentinel Hub API client |
+| NumPy | 1.26+ | Matrix operations and NDVI calculation |
+| OpenCV | 4.9+ | Contour detection |
+| Shapely | 2.0+ | Geometry and polygon simplification |
+| Pillow | 10.0+ | RGB/NDVI image generation |
 
-## Instalación
-
-### 1. Crear entorno virtual
+## 🚀 Quick Start
 
 ```bash
-cd backend
-python -m venv venv
+# 1. Instalar dependencias
+poetry install
+
+# 2. Configurar credenciales
+cp .env.example .env
+# Editar .env con credenciales Sentinel Hub
+
+# 3. Ejecutar servidor
+poetry run python app.py
 ```
 
-### 2. Activar entorno virtual
+**Servidor:** http://localhost:8000
+**Swagger UI:** http://localhost:8000/api/docs
 
-**Windows:**
-```bash
-venv\Scripts\activate
-```
-
-**Linux/Mac:**
-```bash
-source venv/bin/activate
-```
-
-### 3. Instalar dependencias
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configurar variables de entorno
-
-Crear archivo `.env` en el directorio `backend/`:
-
-```env
-# Flask
-FLASK_ENV=development
-FLASK_PORT=5000
-FLASK_DEBUG=True
-
-# CORS (separar múltiples orígenes con comas)
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174
-
-# Sentinel Hub (obtener en https://apps.sentinel-hub.com/dashboard/)
-SENTINEL_HUB_CLIENT_ID=tu-client-id-aqui
-SENTINEL_HUB_CLIENT_SECRET=tu-client-secret-aqui
-```
-
-#### Obtener credenciales de Sentinel Hub:
-1. Registrarse en [Sentinel Hub](https://www.sentinel-hub.com/) (cuenta gratuita)
-2. Ir a **Dashboard** → **User Settings** → **OAuth clients**
-3. Crear nuevo OAuth client
-4. Copiar Client ID y Client Secret al archivo `.env`
+📖 **Para instrucciones detalladas de instalación y configuración, ver:** [docs/quickstart.md](../docs/quickstart.md)
 
 ## Uso
 
-### Iniciar servidor de desarrollo
+### Documentación API Interactiva
+
+**Swagger UI (recomendado):**
+```
+http://localhost:8000/api/docs
+```
+
+**ReDoc (alternativo):**
+```
+http://localhost:8000/api/redoc
+```
+
+### Comandos Poetry útiles
 
 ```bash
-python app.py
-```
+# Instalar nueva dependencia
+poetry add nombre-paquete
 
-El servidor estará disponible en: `http://localhost:5000`
+# Instalar dependencia de desarrollo
+poetry add --group dev nombre-paquete
 
-### Documentación API (Swagger)
+# Actualizar dependencias
+poetry update
 
-Una vez iniciado el servidor, acceder a:
-```
-http://localhost:5000/api/docs/
+# Ver dependencias instaladas
+poetry show
+
+# Activar shell con entorno virtual
+poetry shell
+
+# Ejecutar comando en entorno virtual
+poetry run python script.py
+
+# Ejecutar tests
+poetry run pytest
+
+# Formatear código
+poetry run black .
+
+# Linter
+poetry run ruff check .
 ```
 
 ## Endpoints API

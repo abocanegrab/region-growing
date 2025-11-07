@@ -1,5 +1,5 @@
 """
-Servicio para conectar con Sentinel Hub API y obtener imágenes satelitales
+Service to connect with Sentinel Hub API and obtain satellite imagery
 """
 from sentinelhub import (
     SHConfig,
@@ -15,21 +15,24 @@ import numpy as np
 import base64
 from io import BytesIO
 from PIL import Image
-from config.config import get_config
+from config.config import Settings
+from app.utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class SentinelHubService:
     """
-    Servicio para obtener imágenes de Sentinel-2 desde Sentinel Hub
+    Service to obtain Sentinel-2 images from Sentinel Hub
     """
 
     def __init__(self):
-        """Inicializar configuración de Sentinel Hub"""
-        config = get_config()
+        """Initialize Sentinel Hub configuration"""
+        self.settings = Settings()
 
         self.sh_config = SHConfig()
-        self.sh_config.sh_client_id = config.SENTINEL_HUB_CLIENT_ID
-        self.sh_config.sh_client_secret = config.SENTINEL_HUB_CLIENT_SECRET
+        self.sh_config.sh_client_id = self.settings.sentinel_hub_client_id
+        self.sh_config.sh_client_secret = self.settings.sentinel_hub_client_secret
 
         # Resolución en metros por píxel (10m para Sentinel-2)
         self.resolution = 10
@@ -77,10 +80,10 @@ class SentinelHubService:
         width, height = bbox_size
 
         if width > max_dimension or height > max_dimension:
-            # Calcular factor de escala
+            # Calculate scale factor
             scale = min(max_dimension / width, max_dimension / height)
             bbox_size = (int(width * scale), int(height * scale))
-            print(f"      Imagen muy grande ({width}x{height}), reducida a {bbox_size}")
+            logger.info("Image too large (%dx%d), reduced to %s", width, height, bbox_size)
 
         # Evalscript para obtener bandas B02 (Blue), B03 (Green), B04 (Red), B08 (NIR), SCL
         evalscript = """
@@ -136,21 +139,27 @@ class SentinelHubService:
             # SCL: 3=cloud shadows, 8=cloud medium prob, 9=cloud high prob, 10=thin cirrus
             cloud_mask = np.isin(scl_band, [3, 8, 9, 10])
 
-            # Crear imagen RGB para visualización
-            # Debug: Ver rango de valores de las bandas
-            print(f"      DEBUG RGB - Red band: min={red_band.min():.4f}, max={red_band.max():.4f}, mean={red_band.mean():.4f}")
-            print(f"      DEBUG RGB - Green band: min={green_band.min():.4f}, max={green_band.max():.4f}, mean={green_band.mean():.4f}")
-            print(f"      DEBUG RGB - Blue band: min={blue_band.min():.4f}, max={blue_band.max():.4f}, mean={blue_band.mean():.4f}")
+            # Create RGB image for visualization
+            # Debug: View band value ranges
+            logger.debug("RGB bands - Red: min=%.4f, max=%.4f, mean=%.4f",
+                        red_band.min(), red_band.max(), red_band.mean())
+            logger.debug("RGB bands - Green: min=%.4f, max=%.4f, mean=%.4f",
+                        green_band.min(), green_band.max(), green_band.mean())
+            logger.debug("RGB bands - Blue: min=%.4f, max=%.4f, mean=%.4f",
+                        blue_band.min(), blue_band.max(), blue_band.mean())
 
-            # Normalizar RGB de forma simple y robusta
-            # Sentinel-2 en DN tiene valores típicos entre 0-10000
+            # Normalize RGB in a simple and robust way
+            # Sentinel-2 DN has typical values between 0-10000
             rgb_image = np.stack([red_band, green_band, blue_band], axis=2)
 
-            print(f"      Band ranges - R:[{red_band.min():.0f},{red_band.max():.0f}] G:[{green_band.min():.0f},{green_band.max():.0f}] B:[{blue_band.min():.0f},{blue_band.max():.0f}]")
+            logger.debug("Band ranges - R:[%.0f,%.0f] G:[%.0f,%.0f] B:[%.0f,%.0f]",
+                        red_band.min(), red_band.max(),
+                        green_band.min(), green_band.max(),
+                        blue_band.min(), blue_band.max())
 
-            # Usar percentiles para normalización robusta (evita valores extremos)
+            # Use percentiles for robust normalization (avoids extreme values)
             p2, p98 = np.percentile(rgb_image, [2, 98])
-            print(f"      RGB percentiles - P2:{p2:.0f}, P98:{p98:.0f}")
+            logger.debug("RGB percentiles - P2:%.0f, P98:%.0f", p2, p98)
 
             # Normalizar a 0-1 usando percentiles
             rgb_normalized = (rgb_image - p2) / (p98 - p2 + 1e-10)  # +epsilon para evitar división por 0
@@ -160,10 +169,11 @@ class SentinelHubService:
             gamma = 0.8  # Aclara ligeramente la imagen
             rgb_normalized = np.power(rgb_normalized, gamma)
 
-            # Convertir a uint8
+            # Convert to uint8
             rgb_image = (rgb_normalized * 255).astype(np.uint8)
 
-            print(f"      DEBUG RGB - Final image: min={rgb_image.min()}, max={rgb_image.max()}, mean={rgb_image.mean():.2f}")
+            logger.debug("Final RGB image: min=%d, max=%d, mean=%.2f",
+                        rgb_image.min(), rgb_image.max(), rgb_image.mean())
 
             # Convertir imagen RGB a base64 para enviar al frontend
             rgb_image_pil = Image.fromarray(rgb_image)
@@ -184,17 +194,19 @@ class SentinelHubService:
             }
 
         except Exception as e:
-            raise Exception(f"Error al obtener datos de Sentinel Hub: {str(e)}")
+            logger.error("Error obtaining data from Sentinel Hub: %s", str(e), exc_info=True)
+            raise Exception(f"Error obtaining data from Sentinel Hub: {str(e)}")
 
     def test_connection(self):
         """
-        Probar la conexión con Sentinel Hub
+        Test connection with Sentinel Hub
 
         Returns:
-            Dict con status de la conexión
+            Dict with connection status
         """
         try:
-            # Intentar una request simple para verificar credenciales
+            logger.info("Testing Sentinel Hub connection...")
+            # Try a simple request to verify credentials
             test_bbox = BBox(bbox=[-77.1, -12.1, -77.0, -12.0], crs=CRS.WGS84)
 
             evalscript = """
@@ -226,17 +238,19 @@ class SentinelHubService:
                 config=self.sh_config
             )
 
-            # Intentar obtener datos
+            # Try to obtain data
             data = request.get_data()
 
+            logger.info("Sentinel Hub connection successful")
             return {
                 'status': 'success',
-                'message': 'Conexión exitosa con Sentinel Hub',
+                'message': 'Successful connection to Sentinel Hub',
                 'data_shape': data[0].shape if data else None
             }
 
         except Exception as e:
+            logger.error("Sentinel Hub connection failed: %s", str(e), exc_info=True)
             return {
                 'status': 'error',
-                'message': f'Error de conexión: {str(e)}'
+                'message': f'Connection error: {str(e)}'
             }

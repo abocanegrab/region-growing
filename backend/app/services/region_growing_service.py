@@ -1,5 +1,5 @@
 """
-Servicio principal para análisis de estrés vegetal usando Region Growing
+Main service for vegetation stress analysis using Region Growing algorithm
 """
 import numpy as np
 import cv2
@@ -11,15 +11,18 @@ from app.services.sentinel_hub_service import SentinelHubService
 from app.services.ndvi_service import NDVIService
 from app.services.region_growing_algorithm import RegionGrowingAlgorithm
 from app.services.geo_converter_service import GeoConverterService
+from app.utils import get_logger
+
+logger = get_logger(__name__)
 
 
 class RegionGrowingService:
     """
-    Servicio que coordina el análisis completo:
-    1. Obtención de imágenes satelitales
-    2. Cálculo de NDVI
-    3. Aplicación de Region Growing
-    4. Conversión a coordenadas geográficas
+    Service that coordinates the complete analysis workflow:
+    1. Obtaining satellite imagery
+    2. Calculating NDVI
+    3. Applying Region Growing algorithm
+    4. Converting to geographic coordinates
     """
 
     def __init__(self):
@@ -35,20 +38,20 @@ class RegionGrowingService:
         date_to: Optional[str] = None
     ) -> Dict:
         """
-        Analiza estrés vegetal en la región especificada
+        Analyze vegetation stress in the specified region
 
         Args:
-            bbox: Bounding box con min_lat, min_lon, max_lat, max_lon
-            date_from: Fecha inicial para la búsqueda (YYYY-MM-DD)
-            date_to: Fecha final para la búsqueda (YYYY-MM-DD)
+            bbox: Bounding box with min_lat, min_lon, max_lat, max_lon
+            date_from: Start date for search (YYYY-MM-DD)
+            date_to: End date for search (YYYY-MM-DD)
 
         Returns:
-            Dict con GeoJSON de regiones y estadísticas
+            Dict with GeoJSON of regions and statistics
         """
 
         try:
-            # 1. Obtener datos de Sentinel-2
-            print(f"[1/4] Obteniendo imagen Sentinel-2 para bbox: {bbox}")
+            # 1. Obtain Sentinel-2 data
+            logger.info("[1/4] Obtaining Sentinel-2 image for bbox: %s", bbox)
             sentinel_data = self.sentinel_service.get_sentinel2_data(
                 bbox,
                 date_from,
@@ -60,57 +63,61 @@ class RegionGrowingService:
             cloud_mask = sentinel_data['cloud_mask']
             image_shape = red_band.shape
 
-            print(f"      Imagen obtenida: {image_shape}, Nubes: {np.sum(cloud_mask)/cloud_mask.size*100:.1f}%")
+            cloud_percentage = np.sum(cloud_mask) / cloud_mask.size * 100
+            logger.info("Image obtained: shape=%s, cloud_coverage=%.1f%%",
+                       image_shape, cloud_percentage)
 
-            # 2. Calcular NDVI
-            print("[2/4] Calculando NDVI...")
+            # 2. Calculate NDVI
+            logger.info("[2/4] Calculating NDVI...")
             ndvi_result = self.ndvi_service.calculate_ndvi(red_band, nir_band, cloud_mask)
             ndvi = ndvi_result['ndvi_masked']
             ndvi_stats = ndvi_result['statistics']
 
-            print(f"      NDVI medio: {ndvi_stats['mean']:.3f}, rango: [{ndvi_stats['min']:.3f}, {ndvi_stats['max']:.3f}]")
+            logger.info("NDVI calculated: mean=%.3f, range=[%.3f, %.3f]",
+                       ndvi_stats['mean'], ndvi_stats['min'], ndvi_stats['max'])
 
-            # 3. Aplicar Region Growing
-            print("[3/4] Aplicando Region Growing...")
-            # Usar -999 como valor especial para áreas enmascaradas (nubes)
-            # El algoritmo debe ignorar estos píxeles
+            # 3. Apply Region Growing
+            logger.info("[3/4] Applying Region Growing algorithm...")
+            # Use -999 as special value for masked areas (clouds)
+            # The algorithm should ignore these pixels
             ndvi_for_rg = np.ma.filled(ndvi, fill_value=-999)
             labeled_image, num_regions, regions_info = self.region_growing.region_growing(
                 ndvi_for_rg
             )
 
-            print(f"      Regiones detectadas: {num_regions}")
+            logger.info("Regions detected: %d", num_regions)
 
-            # Clasificar regiones por nivel de estrés
+            # Classify regions by stress level
             classified_regions = self.region_growing.classify_regions_by_stress(regions_info)
 
-            print(f"      Alto estrés: {len(classified_regions['high_stress'])}, "
-                  f"Medio: {len(classified_regions['medium_stress'])}, "
-                  f"Bajo: {len(classified_regions['low_stress'])}")
+            logger.info("Stress classification: high=%d, medium=%d, low=%d",
+                       len(classified_regions['high_stress']),
+                       len(classified_regions['medium_stress']),
+                       len(classified_regions['low_stress']))
 
-            # 4. Convertir a coordenadas geográficas y GeoJSON
-            print("[4/4] Convirtiendo a GeoJSON...")
+            # 4. Convert to geographic coordinates and GeoJSON
+            logger.info("[4/4] Converting to GeoJSON...")
             geojson = self.geo_converter.regions_to_geojson(
                 regions_info,
                 bbox,
                 image_shape
             )
 
-            # Calcular estadísticas
+            # Calculate statistics
             statistics = self.geo_converter.calculate_statistics(
                 regions_info,
                 classified_regions,
                 image_shape,
-                resolution=10  # 10m para Sentinel-2
+                resolution=10  # 10m for Sentinel-2
             )
 
-            # Agregar información de la consulta
+            # Add query information
             statistics['date_from'] = sentinel_data['date_from']
             statistics['date_to'] = sentinel_data['date_to']
             statistics['cloud_coverage'] = ndvi_stats['cloud_coverage']
 
-            print(f"      Total área: {statistics['total_area']:.2f} ha")
-            print(f"      Estrés alto: {statistics['high_stress_area']:.2f} ha")
+            logger.info("Analysis completed: total_area=%.2f ha, high_stress_area=%.2f ha",
+                       statistics['total_area'], statistics['high_stress_area'])
 
             # Crear imagen NDVI visualizable
             ndvi_image_base64 = self._create_ndvi_visualization(ndvi, image_shape)
@@ -127,8 +134,8 @@ class RegionGrowingService:
             return result
 
         except Exception as e:
-            print(f"Error en análisis: {str(e)}")
-            raise Exception(f"Error al analizar la región: {str(e)}")
+            logger.error("Error during analysis: %s", str(e), exc_info=True)
+            raise Exception(f"Error analyzing region: {str(e)}")
 
     def test_sentinel_connection(self):
         """
