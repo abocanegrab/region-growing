@@ -1,67 +1,48 @@
-import os
-from dotenv import load_dotenv
-
-# Cargar variables de entorno
-load_dotenv()
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List
 
 
-class Config:
-    """Configuración base de la aplicación"""
+class Settings(BaseSettings):
+    """
+    Application settings using Pydantic Settings
 
-    # Flask
-    FLASK_ENV = os.getenv('FLASK_ENV', 'development')
-    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    PORT = int(os.getenv('FLASK_PORT', 5000))
+    All settings are loaded from environment variables or .env file
+    """
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        env_file_encoding='utf-8',
+        case_sensitive=False,
+        extra='ignore'
+    )
+
+    # App
+    app_name: str = "Sistema Híbrido de Detección de Estrés Vegetal"
+    app_version: str = "2.0.0"
+    debug: bool = False
+    port: int = 8000
+
+    # CORS - can be comma-separated string or list
+    cors_origins: str = "http://localhost:3000,http://localhost:5173"
 
     # Sentinel Hub
-    SENTINEL_HUB_CLIENT_ID = os.getenv('SENTINEL_HUB_CLIENT_ID')
-    SENTINEL_HUB_CLIENT_SECRET = os.getenv('SENTINEL_HUB_CLIENT_SECRET')
+    sentinel_hub_client_id: str = ""
+    sentinel_hub_client_secret: str = ""
 
-    # CORS
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
+    # Logging
+    log_level: str = "INFO"
+    log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-    # Database (para futuro)
-    # DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///database.db')
-
-    @staticmethod
-    def validate():
-        """Valida que las configuraciones necesarias estén presentes"""
-        required = [
-            'SENTINEL_HUB_CLIENT_ID',
-            'SENTINEL_HUB_CLIENT_SECRET'
-        ]
-
-        missing = []
-        for key in required:
-            if not os.getenv(key):
-                missing.append(key)
-
-        if missing:
-            raise ValueError(
-                f"Faltan las siguientes variables de entorno: {', '.join(missing)}\n"
-                f"Por favor, configura el archivo .env basándote en .env.example"
-            )
-
-
-class DevelopmentConfig(Config):
-    """Configuración para desarrollo"""
-    DEBUG = True
-
-
-class ProductionConfig(Config):
-    """Configuración para producción"""
-    DEBUG = False
-
-
-# Mapeo de configuraciones
-config_by_name = {
-    'development': DevelopmentConfig,
-    'production': ProductionConfig,
-    'default': DevelopmentConfig
-}
-
-
-def get_config():
-    """Retorna la configuración según el ambiente"""
-    env = os.getenv('FLASK_ENV', 'development')
-    return config_by_name.get(env, DevelopmentConfig)
+    # Timeouts (in seconds)
+    sentinel_hub_timeout: int = 30
+    analysis_timeout: int = 60
+    
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Convert CORS origins string to list"""
+        if isinstance(self.cors_origins, str):
+            return [origin.strip() for origin in self.cors_origins.split(',')]
+        return self.cors_origins
+    
+    def validate_credentials(self) -> bool:
+        """Check if Sentinel Hub credentials are configured"""
+        return bool(self.sentinel_hub_client_id and self.sentinel_hub_client_secret)

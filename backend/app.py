@@ -1,31 +1,33 @@
 """
-Punto de entrada de la aplicación Flask
+FastAPI application entry point
 """
-from app import create_app
-from config.config import get_config
+from config.config import Settings
+import uvicorn
 
-# Crear instancia de la aplicación
-app = create_app()
-config = get_config()
+settings = Settings()
 
 if __name__ == '__main__':
-    # Validar configuración antes de iniciar
+    # Validate configuration before starting
     try:
-        config.validate()
-        print("[OK] All credentials configured")
-    except ValueError as e:
-        print(f"[WARNING] {e}")
-        print("Tip: Configure Sentinel Hub credentials in .env for full functionality")
-        print("You can still test the API endpoints\n")
-
-    print(f"Starting Flask app in {config.FLASK_ENV} mode")
-    print(f"API running on http://localhost:{config.PORT}")
-    print(f"Health check: http://localhost:{config.PORT}/health")
-    print(f"Test endpoint: http://localhost:{config.PORT}/api/analysis/test")
-    print(f"Swagger UI: http://localhost:{config.PORT}/api/docs/")
-
-    app.run(
-        host='0.0.0.0',
-        port=config.PORT,
-        debug=config.DEBUG
+        if not settings.validate_credentials():
+            print("[WARNING] Sentinel Hub credentials not configured")
+            print("Tip: Configure SENTINEL_HUB_CLIENT_ID and SENTINEL_HUB_CLIENT_SECRET in .env")
+            print("You can still test the API endpoints\n")
+        else:
+            print("[OK] All credentials configured")
+    except Exception as e:
+        print(f"[WARNING] Configuration issue: {e}")
+    
+    print("Starting FastAPI application")
+    print(f"API running on http://localhost:{settings.port}")
+    print(f"Health check: http://localhost:{settings.port}/health")
+    print(f"Test endpoint: http://localhost:{settings.port}/api/analysis/test")
+    print(f"Swagger UI: http://localhost:{settings.port}/api/docs")
+    print(f"ReDoc: http://localhost:{settings.port}/api/redoc")
+    
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.port,
+        reload=settings.debug
     )
