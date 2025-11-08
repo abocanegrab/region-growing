@@ -159,81 +159,70 @@ Usamos **4-conectividad** (vecinos arriba, abajo, izquierda, derecha):
 
 ## 🏗️ Arquitectura del Sistema
 
-El sistema sigue una **arquitectura cliente-servidor** con separación clara entre frontend y backend:
+El sistema sigue una **arquitectura limpia y desacoplada**, con un único gestor de dependencias (Poetry) en la raíz y el código reutilizable centralizado en el directorio `src/`.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        FRONTEND                              │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Vue 3 + Leaflet (Interfaz de Usuario)              │   │
-│  │  - Mapa interactivo                                  │   │
-│  │  - Dibujo de polígonos                               │   │
-│  │  - Visualización de resultados                       │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           │ HTTP REST API (JSON)
-                           │
-┌─────────────────────────────────────────────────────────────┐
-│                        BACKEND                               │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Flask API (Controladores)                           │   │
-│  │  - Validación de datos                               │   │
-│  │  - Orquestación de servicios                         │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                           │                                  │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Capa de Servicios                                   │   │
-│  │  ┌──────────────────────────────────────────────┐  │   │
-│  │  │  SentinelHubService                          │  │   │
-│  │  │  - Autenticación OAuth                       │  │   │
-│  │  │  - Descarga de bandas espectrales            │  │   │
-│  │  └──────────────────────────────────────────────┘  │   │
-│  │  ┌──────────────────────────────────────────────┐  │   │
-│  │  │  NDVIService                                 │  │   │
-│  │  │  - Cálculo de índices de vegetación          │  │   │
-│  │  │  - Aplicación de máscaras de nubes           │  │   │
-│  │  └──────────────────────────────────────────────┘  │   │
-│  │  ┌──────────────────────────────────────────────┐  │   │
-│  │  │  RegionGrowingAlgorithm                      │  │   │
-│  │  │  - Segmentación de imagen NDVI               │  │   │
-│  │  │  - Clasificación por nivel de estrés         │  │   │
-│  │  └──────────────────────────────────────────────┘  │   │
-│  │  ┌──────────────────────────────────────────────┐  │   │
-│  │  │  GeoConverterService                         │  │   │
-│  │  │  - Conversión píxel → coordenadas            │  │   │
-│  │  │  - Generación de GeoJSON                     │  │   │
-│  │  └──────────────────────────────────────────────┘  │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           │ API REST
-                           │
-┌─────────────────────────────────────────────────────────────┐
-│                   SENTINEL HUB API (ESA)                     │
-│              - Imágenes Sentinel-2 L2A                       │
-│              - Procesamiento en la nube                      │
-└─────────────────────────────────────────────────────────────┘
+proyecto-region-growing/
+│
+├── pyproject.toml                        # 👈 UN SOLO POETRY (raíz)
+├── poetry.lock
+│
+├── src/                                  # 👈 Código core reutilizable
+│   ├── __init__.py
+│   ├── features/
+│   │   ├── __init__.py
+│   │   └── ndvi_calculator.py            # Lógica de cálculo de índices
+│   └── utils/
+│       ├── __init__.py
+│       ├── sentinel_download.py          # Funciones puras de descarga
+│       ├── image_processing.py           # Procesamiento de imágenes
+│       └── geo_utils.py                  # Utilidades geoespaciales
+│
+├── backend/                              # 👈 Backend (FastAPI)
+│   ├── app/
+│   │   ├── main.py                       # App principal FastAPI
+│   │   ├── api/
+│   │   │   └── routes/
+│   │   │       └── analysis.py           # Endpoints REST
+│   │   └── services/
+│   │       └── region_growing_service.py # Wrapper que usa `src/`
+│   ├── .env.example                      # Plantilla de variables de entorno
+│   └── app.py                            # Punto de entrada
+│
+├── frontend/                             # 👈 Frontend (Nuxt 3)
+│   ├── components/
+│   │   └── Map/
+│   │       └── MapLibreMap.vue           # Mapa interactivo
+│   ├── pages/
+│   │   └── index.vue                     # Página principal
+│   └── composables/
+│       └── useAnalysis.ts                # Lógica de negocio del frontend
+│
+├── notebooks/                            # 👈 Notebooks (Jupyter)
+│   └── exploratory/
+│       └── 01_sentinel_download_example.ipynb # Usa `src/`
+│
+└── tests/                                # 👈 Tests (Pytest)
+    └── unit/
+        └── test_sentinel_download.py     # Tests para `src/`
 ```
 
 ### Componentes Principales:
 
-#### Frontend (Vue 3)
-- **MapView.vue**: Mapa interactivo con Leaflet, dibujo de polígonos y visualización de resultados
-- **AnalysisPanel.vue**: Panel de control con validación de tamaño de región y selección de fechas
-- **ResultsPanel.vue**: Visualización de estadísticas generales con cobertura de nubes
-- **DetailedResultsModal.vue**: Modal con 4 tabs para análisis detallado (comparación visual, estadísticas, guía, exportar)
-- **InfoTooltip.vue**: Componente reutilizable para explicaciones contextuales
-- **analysis.store.js**: State management con Pinia, validación de tamaño, gestión de warnings
-- **api.service.js**: Cliente HTTP con Axios para comunicación con backend
+#### `src/` (Código Reutilizable)
+- **`utils/sentinel_download.py`**: Funciones puras para descargar datos de Sentinel-2.
+- **`utils/image_processing.py`**: Funciones para normalizar bandas, crear imágenes RGB, etc.
+- **`features/ndvi_calculator.py`**: Lógica para calcular NDVI y otros índices.
 
-#### Backend (Flask)
-- **analysis_controller.py**: Endpoints REST
-- **region_growing_service.py**: Orquestador principal
-- **sentinel_hub_service.py**: Integración con Sentinel Hub
-- **ndvi_service.py**: Procesamiento de índices de vegetación
-- **region_growing_algorithm.py**: Implementación del algoritmo
-- **geo_converter_service.py**: Conversión geoespacial
+#### Backend (FastAPI)
+- **`main.py`**: Punto de entrada de la API.
+- **`analysis.py`**: Endpoints REST que reciben las solicitudes del frontend.
+- **`region_growing_service.py`**: Servicio que orquesta la lógica de negocio, actuando como un **wrapper delgado** que llama a las funciones reutilizables en `src/`.
+
+#### Frontend (Nuxt 3)
+- **`MapLibreMap.vue`**: Mapa interactivo para seleccionar la región.
+- **`useAnalysis.ts`**: Composable con la lógica para llamar al backend y manejar el estado.
+- **`index.vue`**: Página principal que integra todos los componentes.
 
 ---
 
@@ -554,44 +543,69 @@ TrabajoFinal/
 
 ### Prerrequisitos
 
-- **Python 3.11+**
+- **Python 3.11-3.13** (Python 3.14 no soportado aún por PyTorch)
+- **Poetry 1.7+** - [Guía de instalación](https://python-poetry.org/docs/#installation)
 - **Node.js 18+** y **npm**
 - **Cuenta en Sentinel Hub** ([Registro gratuito](https://www.sentinel-hub.com/))
+- **NVIDIA GPU con CUDA 12.9+** (opcional, para aceleración GPU)
 
-### 1. Configurar Backend
+### Instalación Rápida
 
+**Windows:**
 ```bash
-cd backend
-
-# Crear entorno virtual
-python -m venv venv
-
-# Activar entorno virtual
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# Instalar dependencias
-pip install -r requirements.txt
+.\setup.bat
 ```
 
-### 2. Configurar Variables de Entorno
+**Linux/Mac:**
+```bash
+chmod +x setup.sh
+./setup.sh
+```
 
-Crear archivo `.env` en `backend/`:
+### Instalación Manual
+
+#### 1. Instalar Poetry (si no lo tienes)
+
+```bash
+# Linux/Mac
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Windows (PowerShell)
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
+```
+
+#### 2. Configurar Python (si tienes Python 3.14)
+
+```bash
+# Cambiar a Python 3.12
+poetry env use C:\Users\YOUR_USER\AppData\Local\Programs\Python\Python312\python.exe
+```
+
+#### 3. Instalar Dependencias
+
+```bash
+# Esto instala TODO automáticamente (incluye PyTorch con CUDA 12.9)
+poetry install
+```
+
+#### 4. Configurar Variables de Entorno
+
+Copiar y configurar el archivo `.env`:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Editar `backend/.env` con tus credenciales:
 
 ```env
-# Flask
-FLASK_ENV=development
-FLASK_PORT=5000
-FLASK_DEBUG=True
-
-# CORS
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174
-
 # Sentinel Hub (obtener en https://apps.sentinel-hub.com/dashboard/)
 SENTINEL_HUB_CLIENT_ID=tu-client-id-aqui
 SENTINEL_HUB_CLIENT_SECRET=tu-client-secret-aqui
+
+# App (opcional, ya tienen defaults)
+PORT=8070
+DEBUG=False
 ```
 
 #### Cómo obtener credenciales de Sentinel Hub:
@@ -602,7 +616,7 @@ SENTINEL_HUB_CLIENT_SECRET=tu-client-secret-aqui
 4. Copiar **Client ID** y **Client Secret**
 5. Pegar en el archivo `.env`
 
-### 3. Configurar Frontend
+#### 5. Configurar Frontend
 
 ```bash
 cd frontend
@@ -614,22 +628,30 @@ npm install
 Crear archivo `.env` en `frontend/` (opcional):
 
 ```env
-VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://localhost:8070
 ```
 
-### 4. Verificar Instalación
+#### 6. Verificar Instalación
 
+**Verificar PyTorch con CUDA:**
 ```bash
-# Backend
-cd backend
-venv\Scripts\python.exe app.py
-# Debería mostrar: "API running on http://localhost:5000"
+poetry run python -c "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA: {torch.cuda.is_available()}')"
+```
 
-# Frontend (en otra terminal)
+**Verificar Backend:**
+```bash
+poetry run python backend/app.py
+# Debería mostrar: "API running on http://localhost:8070"
+```
+
+**Verificar Frontend** (en otra terminal):
+```bash
 cd frontend
 npm run dev
 # Debería mostrar: "Local: http://localhost:5173"
 ```
+
+Para más detalles, consulta [INSTALLATION.md](INSTALLATION.md)
 
 ---
 
@@ -639,14 +661,15 @@ npm run dev
 
 **Terminal 1 - Backend:**
 ```bash
-cd backend
-venv\Scripts\python.exe app.py
+poetry run python backend/app.py
+# API disponible en http://localhost:8070
 ```
 
 **Terminal 2 - Frontend:**
 ```bash
 cd frontend
 npm run dev
+# UI disponible en http://localhost:5173
 ```
 
 ### 2. Acceder a la Aplicación
