@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     All settings are loaded from environment variables or .env file
     """
     model_config = SettingsConfigDict(
-        env_file='.env',
+        env_file='backend/.env',
         env_file_encoding='utf-8',
         case_sensitive=False,
         extra='ignore'
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     app_name: str = "Sistema Híbrido de Detección de Estrés Vegetal"
     app_version: str = "2.0.0"
     debug: bool = False
-    port: int = 8000
+    port: int = 8070
 
     # CORS - can be comma-separated string or list
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173"
