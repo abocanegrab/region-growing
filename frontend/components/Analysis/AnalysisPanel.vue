@@ -5,10 +5,9 @@
     <div class="panel-section">
       <h3>Región Seleccionada</h3>
       <div v-if="store.selectedBounds" class="bounds-info">
-        <p><strong>Latitud:</strong> {{ bounds.south.toFixed(4) }} a {{ bounds.north.toFixed(4) }}</p>
-        <p><strong>Longitud:</strong> {{ bounds.west.toFixed(4) }} a {{ bounds.east.toFixed(4) }}</p>
+        <p><strong>Latitud:</strong> {{ store.selectedBounds.min_lat.toFixed(4) }} a {{ store.selectedBounds.max_lat.toFixed(4) }}</p>
+        <p><strong>Longitud:</strong> {{ store.selectedBounds.min_lon.toFixed(4) }} a {{ store.selectedBounds.max_lon.toFixed(4) }}</p>
 
-        <!-- Advertencia de tamaño -->
         <div v-if="store.sizeWarning"
              :class="['size-warning', `warning-${store.sizeWarning.type}`]">
           <svg v-if="store.sizeWarning.type === 'error'" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -24,7 +23,7 @@
           <div class="warning-content">
             <p>{{ store.sizeWarning.message }}</p>
             <p v-if="!store.sizeWarning.canAnalyze" class="warning-action">
-              ✏️ Dibuja un nuevo polígono más pequeño para poder analizar.
+              Dibuja un nuevo polígono más pequeño para poder analizar.
             </p>
           </div>
         </div>
@@ -44,7 +43,7 @@
           id="dateFrom"
           type="date"
           v-model="dateFrom"
-          :disabled="store.isLoading"
+          :disabled="loading"
         />
       </div>
 
@@ -54,44 +53,48 @@
           id="dateTo"
           type="date"
           v-model="dateTo"
-          :disabled="store.isLoading"
+          :disabled="loading"
         />
       </div>
 
       <button
-        @click="runAnalysis"
+        @click="handleAnalyze"
         class="btn btn-primary"
-        :disabled="!store.selectedBounds || store.isLoading || (store.sizeWarning && !store.sizeWarning.canAnalyze)"
+        :disabled="!store.selectedBounds || loading || (store.sizeWarning && !store.sizeWarning.canAnalyze)"
       >
-        {{ store.isLoading ? 'Analizando...' : 'Analizar Región' }}
+        {{ loading ? 'Analizando...' : 'Analizar Región' }}
       </button>
     </div>
 
-    <div class="panel-section" v-if="store.hasError" >
+    <div class="panel-section" v-if="store.hasError">
       <div class="alert alert-error">
         <h4>Error</h4>
         <p>{{ store.error }}</p>
-        <button @click="store.clearError" class="btn btn-small">Cerrar</button>
+        <button @click="clearError" class="btn btn-small">Cerrar</button>
       </div>
     </div>
 
-    <div class="panel-section" v-if="store.hasResults">
+    <div class="panel-section" v-if="store.hasResults && store.analysisResult && store.analysisResult.statistics">
       <h3>Resultados</h3>
-      <ResultsPanel />
+      <ResultsPanel
+        :statistics="store.analysisResult.statistics"
+        :regions="store.analysisResult.regions || []"
+        :images="store.analysisResult.images"
+        @clear="store.clearResults"
+      />
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, computed } from 'vue'
-import { useAnalysisStore } from '../../stores/analysis.store'
+<script setup lang="ts">
 import ResultsPanel from './ResultsPanel.vue'
 
 const store = useAnalysisStore()
+const { analyzeRegion, clearError, loading } = useAnalysis()
+
 const dateFrom = ref('')
 const dateTo = ref('')
 
-// Valores por defecto (últimos 30 días)
 const today = new Date()
 const thirtyDaysAgo = new Date(today)
 thirtyDaysAgo.setDate(today.getDate() - 30)
@@ -99,18 +102,21 @@ thirtyDaysAgo.setDate(today.getDate() - 30)
 dateTo.value = today.toISOString().split('T')[0]
 dateFrom.value = thirtyDaysAgo.toISOString().split('T')[0]
 
-const bounds = computed(() => {
-  if (!store.selectedBounds) return null
-  return {
-    south: store.selectedBounds.getSouth(),
-    north: store.selectedBounds.getNorth(),
-    west: store.selectedBounds.getWest(),
-    east: store.selectedBounds.getEast()
-  }
-})
+const handleAnalyze = async () => {
+  if (!store.selectedBounds) return
 
-async function runAnalysis() {
-  await store.analyzeRegion(dateFrom.value, dateTo.value)
+  const bbox = {
+    min_lat: store.selectedBounds.min_lat,
+    min_lon: store.selectedBounds.min_lon,
+    max_lat: store.selectedBounds.max_lat,
+    max_lon: store.selectedBounds.max_lon
+  }
+
+  try {
+    await analyzeRegion(bbox, dateFrom.value, dateTo.value)
+  } catch (error) {
+    console.error('Error en análisis:', error)
+  }
 }
 </script>
 
@@ -232,7 +238,6 @@ h3 {
   color: #721c24;
 }
 
-/* Size Warning Styles */
 .size-warning {
   display: flex;
   gap: 12px;

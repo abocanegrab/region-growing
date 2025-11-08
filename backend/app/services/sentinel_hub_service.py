@@ -183,6 +183,8 @@ class SentinelHubService:
 
             return {
                 'red': red_band,
+                'green': green_band,  # Agregar banda verde
+                'blue': blue_band,    # Agregar banda azul
                 'nir': nir_band,
                 'cloud_mask': cloud_mask,
                 'rgb_image_base64': rgb_base64,  # Imagen RGB en base64 para el frontend
