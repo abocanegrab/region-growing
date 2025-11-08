@@ -60,8 +60,12 @@ class RegionGrowingService:
 
             red_band = sentinel_data['red']
             nir_band = sentinel_data['nir']
+            green_band = sentinel_data.get('green')  # Necesitamos green para falso color
             cloud_mask = sentinel_data['cloud_mask']
             image_shape = red_band.shape
+            
+            # Guardar green band en sentinel_data para uso posterior
+            sentinel_data['green'] = green_band
 
             cloud_percentage = np.sum(cloud_mask) / cloud_mask.size * 100
             logger.info("Image obtained: shape=%s, cloud_coverage=%.1f%%",
@@ -122,12 +126,35 @@ class RegionGrowingService:
             # Crear imagen NDVI visualizable
             ndvi_image_base64 = self._create_ndvi_visualization(ndvi, image_shape)
 
+            # Crear imagen de falso color (NIR-Red-Green)
+            false_color_base64 = self._create_false_color_image(
+                sentinel_data.get('nir'),
+                sentinel_data.get('red'),
+                sentinel_data.get('green')
+            )
+
+            # Preparar lista de regiones para el frontend
+            regions_list = []
+            for region in regions_info:
+                # Calcular área en hectáreas
+                pixel_area_m2 = 10 * 10  # 10m resolución
+                area_ha = (region['size'] * pixel_area_m2) / 10000
+                
+                regions_list.append({
+                    'id': region['id'],
+                    'stress_level': region.get('stress_level', 'unknown'),
+                    'ndvi_mean': round(region['mean_ndvi'], 3),
+                    'area': round(area_ha, 2)
+                })
+
             result = {
                 'geojson': geojson,
                 'statistics': statistics,
+                'regions': regions_list,  # Lista de regiones para la tabla
                 'images': {
                     'rgb': sentinel_data.get('rgb_image_base64'),  # Imagen satelital real
-                    'ndvi': ndvi_image_base64  # Mapa NDVI coloreado
+                    'ndvi': ndvi_image_base64,  # Mapa NDVI coloreado
+                    'false_color': false_color_base64  # Falso color NIR-Red-Green
                 }
             }
 
@@ -202,3 +229,51 @@ class RegionGrowingService:
         ndvi_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
 
         return ndvi_base64
+
+    def _create_false_color_image(self, nir_band, red_band, green_band):
+        """
+        Crear imagen de falso color (NIR-Red-Green)
+        
+        Composición: NIR → R, Red → G, Green → B
+        Esta composición resalta la vegetación en tonos rojos/rosados
+        
+        Args:
+            nir_band: Banda NIR (B08)
+            red_band: Banda Red (B04)
+            green_band: Banda Green (B03)
+            
+        Returns:
+            String base64 de la imagen de falso color
+        """
+        if nir_band is None or red_band is None or green_band is None:
+            logger.warning("Missing bands for false color image")
+            return None
+            
+        # Stack bands: NIR → R, Red → G, Green → B
+        false_color = np.stack([nir_band, red_band, green_band], axis=2)
+        
+        # Normalización robusta usando percentiles
+        p2, p98 = np.percentile(false_color, [2, 98])
+        logger.debug("False color percentiles - P2:%.0f, P98:%.0f", p2, p98)
+        
+        # Normalizar a 0-1
+        false_color_normalized = (false_color - p2) / (p98 - p2 + 1e-10)
+        false_color_normalized = np.clip(false_color_normalized, 0, 1)
+        
+        # Ajuste gamma para mejorar contraste
+        gamma = 0.8
+        false_color_normalized = np.power(false_color_normalized, gamma)
+        
+        # Convertir a uint8
+        false_color_image = (false_color_normalized * 255).astype(np.uint8)
+        
+        logger.debug("False color image: min=%d, max=%d, mean=%.2f",
+                    false_color_image.min(), false_color_image.max(), false_color_image.mean())
+        
+        # Convertir a base64
+        false_color_pil = Image.fromarray(false_color_image)
+        buffered = BytesIO()
+        false_color_pil.save(buffered, format="PNG")
+        false_color_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        return false_color_base64

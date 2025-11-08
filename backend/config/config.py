@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # CORS - can be comma-separated string or list
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173"
 
     # Sentinel Hub
     sentinel_hub_client_id: str = ""

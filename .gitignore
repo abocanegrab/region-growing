@@ -70,3 +70,6 @@ coverage.xml
 *.cover
 
 docs/referencias
+
+# Secrets
+*secrets*.txt
