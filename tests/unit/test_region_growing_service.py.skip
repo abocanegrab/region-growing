@@ -1,0 +1,376 @@
+"""
+Unit tests for Region Growing Service orchestration layer.
+
+Tests verify that the service correctly orchestrates workflow steps
+and handles errors appropriately.
+"""
+import pytest
+import numpy as np
+from unittest.mock import Mock, patch, MagicMock
+from backend.app.services.region_growing_service import RegionGrowingService
+
+
+class TestRegionGrowingService:
+    """Test suite for RegionGrowingService orchestration."""
+
+    @pytest.fixture
+    def mock_sentinel_data(self):
+        """Create mock Sentinel-2 data for testing."""
+        return {
+            'red': np.ones((100, 100)) * 0.3,
+            'nir': np.ones((100, 100)) * 0.6,
+            'green': np.ones((100, 100)) * 0.2,
+            'cloud_mask': np.zeros((100, 100), dtype=bool),
+            'date_from': '2024-01-01',
+            'date_to': '2024-01-31',
+            'rgb_image_base64': 'fake_rgb_base64'
+        }
+
+    @pytest.fixture
+    def mock_ndvi_result(self):
+        """Create mock NDVI calculation result."""
+        ndvi = np.ones((100, 100)) * 0.5
+        return {
+            'ndvi': ndvi,
+            'ndvi_masked': np.ma.masked_array(ndvi, mask=np.zeros((100, 100), dtype=bool)),
+            'statistics': {
+                'mean': 0.5,
+                'std': 0.05,
+                'min': 0.4,
+                'max': 0.6,
+                'median': 0.5,
+                'cloud_coverage': 0.0
+            }
+        }
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    @patch('backend.app.services.region_growing_service.calculate_ndvi')
+    @patch('backend.app.services.region_growing_service.ClassicRegionGrowing')
+    @patch('backend.app.services.region_growing_service.GeoConverterService')
+    def test_analyze_stress_orchestration(
+        self,
+        mock_geo_converter,
+        mock_algorithm_class,
+        mock_calculate_ndvi,
+        mock_sentinel_class,
+        mock_sentinel_data,
+        mock_ndvi_result
+    ):
+        """Test that analyze_stress correctly orchestrates all steps."""
+        # Arrange
+        bbox = {
+            'min_lat': -12.05,
+            'min_lon': -77.05,
+            'max_lat': -11.95,
+            'max_lon': -76.95
+        }
+
+        # Mock Sentinel Hub Service
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.get_sentinel2_data.return_value = mock_sentinel_data
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        # Mock NDVI calculation
+        mock_calculate_ndvi.return_value = mock_ndvi_result
+
+        # Mock Region Growing algorithm
+        mock_algorithm_instance = MagicMock()
+        mock_regions_info = [
+            {
+                'id': 1,
+                'size': 5000,
+                'mean_ndvi': 0.5,
+                'std_ndvi': 0.05,
+                'min_ndvi': 0.4,
+                'max_ndvi': 0.6,
+                'pixels': [(0, 0), (0, 1)]
+            }
+        ]
+        mock_algorithm_instance.segment.return_value = (
+            np.ones((100, 100), dtype=int),  # labeled_image
+            1,  # num_regions
+            mock_regions_info
+        )
+        mock_algorithm_instance.classify_by_stress.return_value = {
+            'high_stress': [],
+            'medium_stress': [],
+            'low_stress': mock_regions_info
+        }
+        mock_algorithm_class.return_value = mock_algorithm_instance
+
+        # Mock GeoConverter
+        mock_geo_instance = MagicMock()
+        mock_geo_instance.regions_to_geojson.return_value = {
+            'type': 'FeatureCollection',
+            'features': []
+        }
+        mock_geo_instance.calculate_statistics.return_value = {
+            'total_area': 100.0,
+            'high_stress_area': 0.0,
+            'medium_stress_area': 0.0,
+            'low_stress_area': 100.0
+        }
+        mock_geo_converter.return_value = mock_geo_instance
+
+        service = RegionGrowingService()
+
+        # Act
+        result = service.analyze_stress(bbox, '2024-01-01', '2024-01-31')
+
+        # Assert
+        assert 'geojson' in result
+        assert 'statistics' in result
+        assert 'regions' in result
+        assert 'images' in result
+        assert result['statistics']['total_area'] == 100.0
+        assert result['statistics']['date_from'] == '2024-01-01'
+        assert result['statistics']['date_to'] == '2024-01-31'
+
+        # Verify method calls
+        mock_sentinel_instance.get_sentinel2_data.assert_called_once_with(
+            bbox, '2024-01-01', '2024-01-31'
+        )
+        mock_calculate_ndvi.assert_called_once()
+        mock_algorithm_instance.segment.assert_called_once()
+        mock_algorithm_instance.classify_by_stress.assert_called_once()
+        mock_geo_instance.regions_to_geojson.assert_called_once()
+        mock_geo_instance.calculate_statistics.assert_called_once()
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    def test_analyze_stress_sentinel_failure(self, mock_sentinel_class):
+        """Test error handling when Sentinel data acquisition fails."""
+        # Arrange
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.get_sentinel2_data.side_effect = Exception("Sentinel API error")
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        service = RegionGrowingService()
+        bbox = {'min_lat': -12.05, 'min_lon': -77.05, 'max_lat': -11.95, 'max_lon': -76.95}
+
+        # Act & Assert
+        with pytest.raises(Exception, match="Error analyzing region"):
+            service.analyze_stress(bbox)
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    @patch('backend.app.services.region_growing_service.calculate_ndvi')
+    def test_analyze_stress_ndvi_failure(
+        self,
+        mock_calculate_ndvi,
+        mock_sentinel_class,
+        mock_sentinel_data
+    ):
+        """Test error handling when NDVI calculation fails."""
+        # Arrange
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.get_sentinel2_data.return_value = mock_sentinel_data
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        mock_calculate_ndvi.side_effect = Exception("NDVI calculation error")
+
+        service = RegionGrowingService()
+        bbox = {'min_lat': -12.05, 'min_lon': -77.05, 'max_lat': -11.95, 'max_lon': -76.95}
+
+        # Act & Assert
+        with pytest.raises(Exception, match="Error analyzing region"):
+            service.analyze_stress(bbox)
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    @patch('backend.app.services.region_growing_service.calculate_ndvi')
+    @patch('backend.app.services.region_growing_service.ClassicRegionGrowing')
+    @patch('backend.app.services.region_growing_service.GeoConverterService')
+    def test_prepare_regions_list(
+        self,
+        mock_geo_converter,
+        mock_algorithm_class,
+        mock_calculate_ndvi,
+        mock_sentinel_class,
+        mock_sentinel_data,
+        mock_ndvi_result
+    ):
+        """Test that regions list is correctly prepared for frontend."""
+        # Arrange
+        bbox = {'min_lat': -12.05, 'min_lon': -77.05, 'max_lat': -11.95, 'max_lon': -76.95}
+
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.get_sentinel2_data.return_value = mock_sentinel_data
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        mock_calculate_ndvi.return_value = mock_ndvi_result
+
+        mock_algorithm_instance = MagicMock()
+        mock_regions_info = [
+            {
+                'id': 1,
+                'size': 5000,
+                'mean_ndvi': 0.25,
+                'stress_level': 'high',
+                'pixels': []
+            },
+            {
+                'id': 2,
+                'size': 3000,
+                'mean_ndvi': 0.55,
+                'stress_level': 'low',
+                'pixels': []
+            }
+        ]
+        mock_algorithm_instance.segment.return_value = (
+            np.ones((100, 100), dtype=int),
+            2,
+            mock_regions_info
+        )
+        mock_algorithm_instance.classify_by_stress.return_value = {
+            'high_stress': [mock_regions_info[0]],
+            'medium_stress': [],
+            'low_stress': [mock_regions_info[1]]
+        }
+        mock_algorithm_class.return_value = mock_algorithm_instance
+
+        mock_geo_instance = MagicMock()
+        mock_geo_instance.regions_to_geojson.return_value = {'type': 'FeatureCollection', 'features': []}
+        mock_geo_instance.calculate_statistics.return_value = {
+            'total_area': 100.0,
+            'high_stress_area': 50.0,
+            'medium_stress_area': 0.0,
+            'low_stress_area': 50.0
+        }
+        mock_geo_converter.return_value = mock_geo_instance
+
+        service = RegionGrowingService()
+
+        # Act
+        result = service.analyze_stress(bbox)
+
+        # Assert
+        assert 'regions' in result
+        assert len(result['regions']) == 2
+        assert result['regions'][0]['id'] == 1
+        assert result['regions'][0]['stress_level'] == 'high'
+        assert result['regions'][0]['ndvi_mean'] == 0.25
+        assert result['regions'][0]['area'] == 5.0  # 5000 pixels * 100m²/pixel / 10000 = 5 ha
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    def test_test_sentinel_connection(self, mock_sentinel_class):
+        """Test that test_sentinel_connection delegates to SentinelHubService."""
+        # Arrange
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.test_connection.return_value = {
+            'status': 'ok',
+            'message': 'Connection successful'
+        }
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        service = RegionGrowingService()
+
+        # Act
+        result = service.test_sentinel_connection()
+
+        # Assert
+        assert result['status'] == 'ok'
+        mock_sentinel_instance.test_connection.assert_called_once()
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    @patch('backend.app.services.region_growing_service.calculate_ndvi')
+    @patch('backend.app.services.region_growing_service.ClassicRegionGrowing')
+    @patch('backend.app.services.region_growing_service.GeoConverterService')
+    def test_create_ndvi_visualization(
+        self,
+        mock_geo_converter,
+        mock_algorithm_class,
+        mock_calculate_ndvi,
+        mock_sentinel_class,
+        mock_sentinel_data,
+        mock_ndvi_result
+    ):
+        """Test that NDVI visualization is created correctly."""
+        # Arrange
+        bbox = {'min_lat': -12.05, 'min_lon': -77.05, 'max_lat': -11.95, 'max_lon': -76.95}
+
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.get_sentinel2_data.return_value = mock_sentinel_data
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        mock_calculate_ndvi.return_value = mock_ndvi_result
+
+        mock_algorithm_instance = MagicMock()
+        mock_algorithm_instance.segment.return_value = (
+            np.ones((100, 100), dtype=int),
+            1,
+            [{'id': 1, 'size': 10000, 'mean_ndvi': 0.5, 'pixels': []}]
+        )
+        mock_algorithm_instance.classify_by_stress.return_value = {
+            'high_stress': [],
+            'medium_stress': [],
+            'low_stress': [{'id': 1, 'size': 10000, 'mean_ndvi': 0.5}]
+        }
+        mock_algorithm_class.return_value = mock_algorithm_instance
+
+        mock_geo_instance = MagicMock()
+        mock_geo_instance.regions_to_geojson.return_value = {'type': 'FeatureCollection', 'features': []}
+        mock_geo_instance.calculate_statistics.return_value = {'total_area': 100.0}
+        mock_geo_converter.return_value = mock_geo_instance
+
+        service = RegionGrowingService()
+
+        # Act
+        result = service.analyze_stress(bbox)
+
+        # Assert
+        assert 'images' in result
+        assert 'ndvi' in result['images']
+        assert result['images']['ndvi'] is not None
+        assert isinstance(result['images']['ndvi'], str)  # Base64 string
+        assert len(result['images']['ndvi']) > 0
+
+    @patch('backend.app.services.region_growing_service.SentinelHubService')
+    @patch('backend.app.services.region_growing_service.calculate_ndvi')
+    @patch('backend.app.services.region_growing_service.ClassicRegionGrowing')
+    @patch('backend.app.services.region_growing_service.GeoConverterService')
+    def test_create_false_color_image(
+        self,
+        mock_geo_converter,
+        mock_algorithm_class,
+        mock_calculate_ndvi,
+        mock_sentinel_class,
+        mock_sentinel_data,
+        mock_ndvi_result
+    ):
+        """Test that false color image is created correctly."""
+        # Arrange
+        bbox = {'min_lat': -12.05, 'min_lon': -77.05, 'max_lat': -11.95, 'max_lon': -76.95}
+
+        mock_sentinel_instance = MagicMock()
+        mock_sentinel_instance.get_sentinel2_data.return_value = mock_sentinel_data
+        mock_sentinel_class.return_value = mock_sentinel_instance
+
+        mock_calculate_ndvi.return_value = mock_ndvi_result
+
+        mock_algorithm_instance = MagicMock()
+        mock_algorithm_instance.segment.return_value = (
+            np.ones((100, 100), dtype=int),
+            1,
+            [{'id': 1, 'size': 10000, 'mean_ndvi': 0.5, 'pixels': []}]
+        )
+        mock_algorithm_instance.classify_by_stress.return_value = {
+            'high_stress': [],
+            'medium_stress': [],
+            'low_stress': [{'id': 1, 'size': 10000, 'mean_ndvi': 0.5}]
+        }
+        mock_algorithm_class.return_value = mock_algorithm_instance
+
+        mock_geo_instance = MagicMock()
+        mock_geo_instance.regions_to_geojson.return_value = {'type': 'FeatureCollection', 'features': []}
+        mock_geo_instance.calculate_statistics.return_value = {'total_area': 100.0}
+        mock_geo_converter.return_value = mock_geo_instance
+
+        service = RegionGrowingService()
+
+        # Act
+        result = service.analyze_stress(bbox)
+
+        # Assert
+        assert 'images' in result
+        assert 'false_color' in result['images']
+        assert result['images']['false_color'] is not None
+        assert isinstance(result['images']['false_color'], str)
+        assert len(result['images']['false_color']) > 0
