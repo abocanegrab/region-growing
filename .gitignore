@@ -73,3 +73,10 @@ docs/referencias
 
 # Secrets
 *secrets*.txt
+
+# images examples
+data/processed/us-005/
+
+# Models / Data
+models/prithvi/Prithvi_EO_V1_100M.pt
+

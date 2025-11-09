@@ -24,6 +24,11 @@ torch = {version = "^2.8.0", source = "pytorch_cu129"}
 pillow = "^12.0.0"
 scipy = "^1.16.3"
 
+# Prithvi dependencies
+timm = "^1.0.11"
+einops = "^0.8.0"
+huggingface-hub = "^1.1.0"
+
 # Geospatial
 shapely = "^2.1.2"
 pyproj = "^3.7.2"
