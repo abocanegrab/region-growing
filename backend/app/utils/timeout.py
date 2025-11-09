@@ -3,10 +3,10 @@ Timeout utilities for long-running operations
 """
 import asyncio
 import functools
+import logging
 from typing import Callable, Any
-from app.utils import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class TimeoutError(Exception):

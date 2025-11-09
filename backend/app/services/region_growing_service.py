@@ -1,15 +1,21 @@
 """
-Main service for vegetation stress analysis using Region Growing algorithm
+Service layer for Region Growing analysis workflow orchestration.
+
+This service coordinates the complete vegetation stress analysis workflow,
+acting as a thin wrapper that orchestrates calls to pure functions in src/.
 """
 import numpy as np
-import cv2
 import base64
 from io import BytesIO
 from PIL import Image
 from typing import Dict, Optional
+
+# Import pure functions from src/
+from src.algorithms.classic_region_growing import ClassicRegionGrowing
+from src.features.ndvi_calculator import calculate_ndvi
+
+# Import backend-specific services
 from app.services.sentinel_hub_service import SentinelHubService
-from app.services.ndvi_service import NDVIService
-from app.services.region_growing_algorithm import RegionGrowingAlgorithm
 from app.services.geo_converter_service import GeoConverterService
 from app.utils import get_logger
 
@@ -18,17 +24,26 @@ logger = get_logger(__name__)
 
 class RegionGrowingService:
     """
-    Service that coordinates the complete analysis workflow:
-    1. Obtaining satellite imagery
-    2. Calculating NDVI
-    3. Applying Region Growing algorithm
-    4. Converting to geographic coordinates
+    Orchestrates the complete Region Growing analysis workflow.
+
+    This service is a thin wrapper that coordinates:
+    1. Data acquisition (Sentinel-2 via SentinelHubService)
+    2. NDVI calculation (via src.features.ndvi_calculator)
+    3. Region Growing segmentation (via src.algorithms.ClassicRegionGrowing)
+    4. Geographic conversion (via GeoConverterService)
+    5. Visualization generation
+
+    Note: Business logic is in src/, this service only orchestrates and handles I/O.
     """
 
     def __init__(self):
+        """Initialize service with dependencies."""
         self.sentinel_service = SentinelHubService()
-        self.ndvi_service = NDVIService()
-        self.region_growing = RegionGrowingAlgorithm(threshold=0.1, min_region_size=50)
+        self.algorithm = ClassicRegionGrowing(
+            threshold=0.1,
+            min_region_size=50,
+            cloud_mask_value=-999.0
+        )
         self.geo_converter = GeoConverterService()
 
     def analyze_stress(
@@ -38,7 +53,10 @@ class RegionGrowingService:
         date_to: Optional[str] = None
     ) -> Dict:
         """
-        Analyze vegetation stress in the specified region
+        Analyze vegetation stress in the specified region.
+
+        This method orchestrates the complete workflow without containing
+        business logic. All processing is delegated to modules in src/.
 
         Args:
             bbox: Bounding box with min_lat, min_lon, max_lat, max_lon
@@ -46,11 +64,17 @@ class RegionGrowingService:
             date_to: End date for search (YYYY-MM-DD)
 
         Returns:
-            Dict with GeoJSON of regions and statistics
-        """
+            Dict with:
+            - geojson: GeoJSON FeatureCollection with regions
+            - statistics: Analysis statistics
+            - regions: List of regions with stress classification
+            - images: Base64-encoded visualization images
 
+        Raises:
+            Exception: If any step in the workflow fails
+        """
         try:
-            # 1. Obtain Sentinel-2 data
+            # Step 1: Acquire satellite data
             logger.info("[1/4] Obtaining Sentinel-2 image for bbox: %s", bbox)
             sentinel_data = self.sentinel_service.get_sentinel2_data(
                 bbox,
@@ -60,46 +84,39 @@ class RegionGrowingService:
 
             red_band = sentinel_data['red']
             nir_band = sentinel_data['nir']
-            green_band = sentinel_data.get('green')  # Necesitamos green para falso color
+            green_band = sentinel_data.get('green')
             cloud_mask = sentinel_data['cloud_mask']
             image_shape = red_band.shape
-            
-            # Guardar green band en sentinel_data para uso posterior
-            sentinel_data['green'] = green_band
 
             cloud_percentage = np.sum(cloud_mask) / cloud_mask.size * 100
             logger.info("Image obtained: shape=%s, cloud_coverage=%.1f%%",
                        image_shape, cloud_percentage)
 
-            # 2. Calculate NDVI
+            # Step 2: Calculate NDVI using pure function from src/
             logger.info("[2/4] Calculating NDVI...")
-            ndvi_result = self.ndvi_service.calculate_ndvi(red_band, nir_band, cloud_mask)
+            ndvi_result = calculate_ndvi(red_band, nir_band, cloud_mask)
             ndvi = ndvi_result['ndvi_masked']
             ndvi_stats = ndvi_result['statistics']
 
             logger.info("NDVI calculated: mean=%.3f, range=[%.3f, %.3f]",
                        ndvi_stats['mean'], ndvi_stats['min'], ndvi_stats['max'])
 
-            # 3. Apply Region Growing
+            # Step 3: Apply Region Growing algorithm from src/
             logger.info("[3/4] Applying Region Growing algorithm...")
-            # Use -999 as special value for masked areas (clouds)
-            # The algorithm should ignore these pixels
-            ndvi_for_rg = np.ma.filled(ndvi, fill_value=-999)
-            labeled_image, num_regions, regions_info = self.region_growing.region_growing(
-                ndvi_for_rg
-            )
+            ndvi_for_rg = np.ma.filled(ndvi, fill_value=-999.0)
+            labeled_image, num_regions, regions_info = self.algorithm.segment(ndvi_for_rg)
 
             logger.info("Regions detected: %d", num_regions)
 
-            # Classify regions by stress level
-            classified_regions = self.region_growing.classify_regions_by_stress(regions_info)
+            # Classify regions by stress level using algorithm method
+            classified_regions = self.algorithm.classify_by_stress(regions_info)
 
             logger.info("Stress classification: high=%d, medium=%d, low=%d",
                        len(classified_regions['high_stress']),
                        len(classified_regions['medium_stress']),
                        len(classified_regions['low_stress']))
 
-            # 4. Convert to geographic coordinates and GeoJSON
+            # Step 4: Convert to geographic coordinates and GeoJSON
             logger.info("[4/4] Converting to GeoJSON...")
             geojson = self.geo_converter.regions_to_geojson(
                 regions_info,
@@ -115,7 +132,7 @@ class RegionGrowingService:
                 resolution=10  # 10m for Sentinel-2
             )
 
-            # Add query information
+            # Add query metadata
             statistics['date_from'] = sentinel_data['date_from']
             statistics['date_to'] = sentinel_data['date_to']
             statistics['cloud_coverage'] = ndvi_stats['cloud_coverage']
@@ -123,38 +140,25 @@ class RegionGrowingService:
             logger.info("Analysis completed: total_area=%.2f ha, high_stress_area=%.2f ha",
                        statistics['total_area'], statistics['high_stress_area'])
 
-            # Crear imagen NDVI visualizable
+            # Generate visualizations
             ndvi_image_base64 = self._create_ndvi_visualization(ndvi, image_shape)
-
-            # Crear imagen de falso color (NIR-Red-Green)
             false_color_base64 = self._create_false_color_image(
                 sentinel_data.get('nir'),
                 sentinel_data.get('red'),
                 sentinel_data.get('green')
             )
 
-            # Preparar lista de regiones para el frontend
-            regions_list = []
-            for region in regions_info:
-                # Calcular área en hectáreas
-                pixel_area_m2 = 10 * 10  # 10m resolución
-                area_ha = (region['size'] * pixel_area_m2) / 10000
-                
-                regions_list.append({
-                    'id': region['id'],
-                    'stress_level': region.get('stress_level', 'unknown'),
-                    'ndvi_mean': round(region['mean_ndvi'], 3),
-                    'area': round(area_ha, 2)
-                })
+            # Prepare regions list for frontend
+            regions_list = self._prepare_regions_list(regions_info)
 
             result = {
                 'geojson': geojson,
                 'statistics': statistics,
-                'regions': regions_list,  # Lista de regiones para la tabla
+                'regions': regions_list,
                 'images': {
-                    'rgb': sentinel_data.get('rgb_image_base64'),  # Imagen satelital real
-                    'ndvi': ndvi_image_base64,  # Mapa NDVI coloreado
-                    'false_color': false_color_base64  # Falso color NIR-Red-Green
+                    'rgb': sentinel_data.get('rgb_image_base64'),
+                    'ndvi': ndvi_image_base64,
+                    'false_color': false_color_base64
                 }
             }
 
@@ -164,27 +168,59 @@ class RegionGrowingService:
             logger.error("Error during analysis: %s", str(e), exc_info=True)
             raise Exception(f"Error analyzing region: {str(e)}")
 
-    def test_sentinel_connection(self):
+    def test_sentinel_connection(self) -> Dict:
         """
-        Probar la conexión con Sentinel Hub
+        Test connection to Sentinel Hub API.
 
         Returns:
-            Dict con status de la conexión
+            Dict with connection status
         """
         return self.sentinel_service.test_connection()
 
-    def _create_ndvi_visualization(self, ndvi, image_shape):
+    def _prepare_regions_list(self, regions_info: list) -> list:
         """
-        Crear visualización coloreada del NDVI
+        Prepare regions list for frontend consumption.
 
         Args:
-            ndvi: Array con valores NDVI (puede ser masked array)
-            image_shape: Shape de la imagen
+            regions_info: List of region dicts from algorithm
 
         Returns:
-            String base64 de la imagen NDVI coloreada
+            List of simplified region dicts with calculated areas
         """
-        # Convertir masked array a array normal
+        regions_list = []
+        pixel_area_m2 = 10 * 10  # 10m resolution
+
+        for region in regions_info:
+            area_ha = (region['size'] * pixel_area_m2) / 10000
+
+            regions_list.append({
+                'id': region['id'],
+                'stress_level': region.get('stress_level', 'unknown'),
+                'ndvi_mean': round(region['mean_ndvi'], 3),
+                'area': round(area_ha, 2)
+            })
+
+        return regions_list
+
+    def _create_ndvi_visualization(
+        self,
+        ndvi: np.ndarray,
+        image_shape: tuple
+    ) -> str:
+        """
+        Create colored NDVI visualization image.
+
+        Generates a false-color image with gradient: Red → Yellow → Green
+        representing NDVI values from low to high.
+
+        Args:
+            ndvi: NDVI array (may be masked array)
+            image_shape: Shape of the original image
+
+        Returns:
+            Base64-encoded PNG image string
+        """
+        # Convert masked array to regular array
         if np.ma.is_masked(ndvi):
             ndvi_array = np.ma.filled(ndvi, fill_value=-1)
             cloud_mask = ndvi.mask
@@ -192,37 +228,35 @@ class RegionGrowingService:
             ndvi_array = ndvi
             cloud_mask = None
 
-        # Normalizar NDVI a rango 0-1
-        ndvi_normalized = (ndvi_array + 1) / 2  # De [-1, 1] a [0, 1]
+        # Normalize NDVI to [0, 1] range
+        ndvi_normalized = (ndvi_array + 1) / 2
         ndvi_normalized = np.clip(ndvi_normalized, 0, 1)
 
-        # Crear colormap personalizado: Rojo → Amarillo → Verde
-        # Usando operaciones vectorizadas de NumPy para velocidad
+        # Create RGB image with gradient: Red → Yellow → Green
         h, w = ndvi_array.shape
         ndvi_colored = np.zeros((h, w, 3), dtype=np.uint8)
 
-        # Máscara para primera mitad (Rojo → Amarillo)
+        # Split at midpoint for two-stage gradient
         mask_low = ndvi_normalized < 0.5
-        # Máscara para segunda mitad (Amarillo → Verde)
         mask_high = ~mask_low
 
-        # Primera mitad: Rojo (255,0,0) → Amarillo (255,255,0)
-        t_low = ndvi_normalized[mask_low] * 2  # Normalizar a [0, 1]
-        ndvi_colored[mask_low, 0] = 255  # R = 255
-        ndvi_colored[mask_low, 1] = (t_low * 255).astype(np.uint8)  # G aumenta
-        ndvi_colored[mask_low, 2] = 0  # B = 0
+        # First half: Red (255,0,0) → Yellow (255,255,0)
+        t_low = ndvi_normalized[mask_low] * 2
+        ndvi_colored[mask_low, 0] = 255  # Red constant
+        ndvi_colored[mask_low, 1] = (t_low * 255).astype(np.uint8)  # Green increases
+        ndvi_colored[mask_low, 2] = 0  # Blue constant
 
-        # Segunda mitad: Amarillo (255,255,0) → Verde (0,255,0)
-        t_high = (ndvi_normalized[mask_high] - 0.5) * 2  # Normalizar a [0, 1]
-        ndvi_colored[mask_high, 0] = ((1 - t_high) * 255).astype(np.uint8)  # R disminuye
-        ndvi_colored[mask_high, 1] = 255  # G = 255
-        ndvi_colored[mask_high, 2] = 0  # B = 0
+        # Second half: Yellow (255,255,0) → Green (0,255,0)
+        t_high = (ndvi_normalized[mask_high] - 0.5) * 2
+        ndvi_colored[mask_high, 0] = ((1 - t_high) * 255).astype(np.uint8)  # Red decreases
+        ndvi_colored[mask_high, 1] = 255  # Green constant
+        ndvi_colored[mask_high, 2] = 0  # Blue constant
 
-        # Marcar áreas enmascaradas en gris
+        # Mark cloud pixels as gray
         if cloud_mask is not None:
             ndvi_colored[cloud_mask] = [128, 128, 128]
 
-        # Convertir a base64
+        # Convert to base64
         ndvi_image_pil = Image.fromarray(ndvi_colored)
         buffered = BytesIO()
         ndvi_image_pil.save(buffered, format="PNG")
@@ -230,50 +264,55 @@ class RegionGrowingService:
 
         return ndvi_base64
 
-    def _create_false_color_image(self, nir_band, red_band, green_band):
+    def _create_false_color_image(
+        self,
+        nir_band: Optional[np.ndarray],
+        red_band: Optional[np.ndarray],
+        green_band: Optional[np.ndarray]
+    ) -> Optional[str]:
         """
-        Crear imagen de falso color (NIR-Red-Green)
-        
-        Composición: NIR → R, Red → G, Green → B
-        Esta composición resalta la vegetación en tonos rojos/rosados
-        
+        Create false color composite image (NIR-Red-Green).
+
+        This composition (NIR → R, Red → G, Green → B) highlights vegetation
+        in red/pink tones, making it easy to visually identify vegetated areas.
+
         Args:
-            nir_band: Banda NIR (B08)
-            red_band: Banda Red (B04)
-            green_band: Banda Green (B03)
-            
+            nir_band: Near-infrared band (B08)
+            red_band: Red band (B04)
+            green_band: Green band (B03)
+
         Returns:
-            String base64 de la imagen de falso color
+            Base64-encoded PNG image string, or None if bands missing
         """
         if nir_band is None or red_band is None or green_band is None:
             logger.warning("Missing bands for false color image")
             return None
-            
+
         # Stack bands: NIR → R, Red → G, Green → B
         false_color = np.stack([nir_band, red_band, green_band], axis=2)
-        
-        # Normalización robusta usando percentiles
+
+        # Robust normalization using percentiles
         p2, p98 = np.percentile(false_color, [2, 98])
         logger.debug("False color percentiles - P2:%.0f, P98:%.0f", p2, p98)
-        
-        # Normalizar a 0-1
+
         false_color_normalized = (false_color - p2) / (p98 - p2 + 1e-10)
         false_color_normalized = np.clip(false_color_normalized, 0, 1)
-        
-        # Ajuste gamma para mejorar contraste
+
+        # Gamma adjustment for better contrast
         gamma = 0.8
         false_color_normalized = np.power(false_color_normalized, gamma)
-        
-        # Convertir a uint8
+
+        # Convert to uint8
         false_color_image = (false_color_normalized * 255).astype(np.uint8)
-        
+
         logger.debug("False color image: min=%d, max=%d, mean=%.2f",
-                    false_color_image.min(), false_color_image.max(), false_color_image.mean())
-        
-        # Convertir a base64
+                    false_color_image.min(), false_color_image.max(),
+                    false_color_image.mean())
+
+        # Convert to base64
         false_color_pil = Image.fromarray(false_color_image)
         buffered = BytesIO()
         false_color_pil.save(buffered, format="PNG")
         false_color_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
+
         return false_color_base64
