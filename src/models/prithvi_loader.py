@@ -270,32 +270,45 @@ def create_real_prithvi_encoder(
             return pos_embed
         
         def forward(self, x):
-            B = x.shape[0]
-            
-            # Patch embedding: (B, 6, 224, 224) -> (B, 768, 14, 14)
+            B, C, H_in, W_in = x.shape
+
+            # Patch embedding: (B, 6, H, W) -> (B, 768, H//16, W//16)
             x = self.patch_embed_conv(x)
-            
-            # Flatten and transpose: (B, 768, 14, 14) -> (B, 196, 768)
+
+            # Flatten and transpose: (B, 768, H//16, W//16) -> (B, num_patches, 768)
             x = x.flatten(2).transpose(1, 2)
             num_patches = x.shape[1]
-            
+
             # Add cls token
             cls_tokens = self.cls_token.expand(B, -1, -1)  # (B, 1, 768)
-            x = torch.cat((cls_tokens, x), dim=1)  # (B, 197, 768)
-            
+            x = torch.cat((cls_tokens, x), dim=1)  # (B, num_patches+1, 768)
+
             # Add interpolated positional embedding
-            pos_embed = self.interpolate_pos_embed(num_patches)  # (1, 197, 768)
+            pos_embed = self.interpolate_pos_embed(num_patches)  # (1, num_patches+1, 768)
+
+            # Ensure positional embedding matches input size
+            if pos_embed.shape[1] != x.shape[1]:
+                # This should not happen with correct interpolation, but just in case
+                import torch.nn.functional as F
+                pos_embed = F.interpolate(
+                    pos_embed.permute(0, 2, 1),  # (1, 768, num_patches+1)
+                    size=x.shape[1],
+                    mode='linear',
+                    align_corners=False
+                ).permute(0, 2, 1)  # (1, num_patches+1, 768)
+
             x = x + pos_embed
-            
+
             # Remove cls token (we only need spatial features)
-            x = x[:, 1:, :]  # (B, 196, 768)
-            
+            x = x[:, 1:, :]  # (B, num_patches, 768)
+
             # Project to 256D
-            x = self.proj(x)  # (B, 196, 256)
-            
+            x = self.proj(x)  # (B, num_patches, 256)
+
             # Reshape to spatial format
-            H = W = int(num_patches ** 0.5)
-            x = x.transpose(1, 2).reshape(B, 256, H, W)
+            H_patches = H_in // 16
+            W_patches = W_in // 16
+            x = x.transpose(1, 2).reshape(B, 256, H_patches, W_patches)
             
             return x
     
