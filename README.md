@@ -1159,3 +1159,72 @@ Este proyecto utiliza:
 ---
 
 **Última actualización**: Octubre 2025
+
+
+---
+
+## 📥 Descarga de Imágenes Satelitales
+
+### Importante: Imágenes No Incluidas en el Repositorio
+
+Las imágenes satelitales (~6GB) **NO están incluidas en Git** debido a su tamaño. Debes descargarlas antes de usar el sistema.
+
+### Configuración Rápida
+
+1. **Obtén credenciales de Sentinel Hub** (gratis):
+   - Regístrate en https://www.sentinel-hub.com/
+   - Crea una configuración y obtén `CLIENT_ID` y `CLIENT_SECRET`
+
+2. **Configura las credenciales**:
+```bash
+export SENTINELHUB_CLIENT_ID="tu_client_id"
+export SENTINELHUB_CLIENT_SECRET="tu_client_secret"
+```
+
+O crea `sentinelhub-secrets_.txt` en la raíz:
+```
+tu_client_id
+tu_client_secret
+```
+
+3. **Descarga las imágenes**:
+```bash
+# Descarga automática de las 3 zonas de México (recomendado)
+python scripts/redownload_with_recent_dates.py
+
+# O descarga zona por zona
+python scripts/download_hls_image.py --zone mexicali
+python scripts/download_hls_image.py --zone bajio
+python scripts/download_hls_image.py --zone sinaloa
+```
+
+### Documentación Completa
+
+- **Guía detallada**: [`docs/GUIA_DESCARGA_IMAGENES.md`](docs/GUIA_DESCARGA_IMAGENES.md)
+- **Información de imágenes**: [`img/README.md`](img/README.md)
+- **Solución de problemas**: [`docs/SOLUCION_SIMILITUD_DIFERENTES_TAMANOS.md`](docs/SOLUCION_SIMILITUD_DIFERENTES_TAMANOS.md)
+
+---
+
+## 🧪 Notebooks Experimentales
+
+### US-006: Extracción de Embeddings
+
+El notebook [`notebooks/experimental/embeddings-demo.ipynb`](notebooks/experimental/embeddings-demo.ipynb) demuestra:
+
+1. **Carga de imágenes HLS** de 3 zonas agrícolas de México
+2. **Extracción de embeddings semánticos** usando el modelo Prithvi (NASA/IBM)
+3. **Visualización PCA** de embeddings de 256 dimensiones
+4. **Análisis de similitud** entre diferentes zonas agrícolas
+5. **Comparación detallada** píxel a píxel (cuando las zonas tienen el mismo tamaño)
+
+**Zonas de estudio:**
+- **Mexicali (Baja California)**: Agricultura intensiva de riego
+- **Bajío (Guanajuato)**: Región agrícola diversificada
+- **Sinaloa**: Valle agrícola de exportación
+
+**Requisitos:**
+- Imágenes descargadas (ver sección anterior)
+- GPU recomendada (CUDA) para extracción rápida de embeddings
+- ~2GB de RAM para procesar embeddings
+

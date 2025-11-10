@@ -80,3 +80,12 @@ data/processed/us-005/
 # Models / Data
 models/prithvi/Prithvi_EO_V1_100M.pt
 
+# Satellite imagery (large files ~6GB)
+img/sentinel2/
+img/*.png
+img/*.jpg
+img/*.tif
+
+# Embeddings (generated files)
+*.npz
+

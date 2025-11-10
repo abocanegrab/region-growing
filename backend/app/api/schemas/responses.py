@@ -81,3 +81,82 @@ class ErrorResponse(BaseModel):
             ]
         }
     }
+
+
+class EmbeddingsMetadata(BaseModel):
+    """Metadata for extracted embeddings"""
+    
+    bbox: Dict[str, float] = Field(..., description="Bounding box coordinates")
+    date_from: str = Field(..., description="Start date")
+    date_to: str = Field(..., description="End date")
+    dimensions: tuple = Field(..., description="Image dimensions (width, height)")
+    embeddings_shape: tuple = Field(..., description="Embeddings shape (H, W, D)")
+    model: str = Field(..., description="Model used (simple or prithvi)")
+    extracted_at: str = Field(..., description="Extraction timestamp (ISO format)")
+
+
+class EmbeddingsExtractResponse(BaseModel):
+    """Response model for embeddings extraction"""
+    
+    success: bool = Field(..., description="Whether extraction was successful")
+    data: Optional[Dict[str, Any]] = Field(None, description="Extraction results")
+    message: Optional[str] = Field(None, description="Status or error message")
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "success": True,
+                    "data": {
+                        "embeddings_shape": [512, 512, 256],
+                        "embeddings_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                        "download_url": "/api/embeddings/download/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                        "metadata": {
+                            "bbox": {
+                                "min_lat": 32.45,
+                                "min_lon": -115.35,
+                                "max_lat": 32.55,
+                                "max_lon": -115.25
+                            },
+                            "date_from": "2024-01-01",
+                            "date_to": "2024-01-15",
+                            "dimensions": [512, 512],
+                            "embeddings_shape": [512, 512, 256],
+                            "model": "prithvi",
+                            "extracted_at": "2024-11-10T12:34:56.789"
+                        }
+                    },
+                    "message": "Embeddings extracted successfully"
+                }
+            ]
+        }
+    }
+
+
+class EmbeddingsSimilarityResponse(BaseModel):
+    """Response model for similarity computation"""
+    
+    success: bool = Field(..., description="Whether computation was successful")
+    data: Optional[Dict[str, Any]] = Field(None, description="Similarity results")
+    message: Optional[str] = Field(None, description="Status or error message")
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "success": True,
+                    "data": {
+                        "mean_similarity": 0.87,
+                        "std_similarity": 0.12,
+                        "min_similarity": 0.45,
+                        "max_similarity": 0.99,
+                        "similarity_map_shape": [512, 512],
+                        "interpretation": "high_similarity",
+                        "region_a_metadata": {},
+                        "region_b_metadata": {}
+                    },
+                    "message": "Similarity computed successfully"
+                }
+            ]
+        }
+    }

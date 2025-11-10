@@ -216,6 +216,226 @@ def create_cloud_mask(scl_band: np.ndarray) -> np.ndarray:
     return np.isin(scl_band, [3, 8, 9, 10])
 
 
+def download_hls_bands(
+    bbox_coords: Dict[str, float],
+    config: SHConfig,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    resolution: int = 10,
+    max_cloud_coverage: float = 0.3
+) -> Dict:
+    """
+    Download HLS (Harmonized Landsat Sentinel-2) bands for Prithvi model.
+    
+    This function downloads the 6 specific bands required by Prithvi:
+    - B02 (Blue, 10m)
+    - B03 (Green, 10m)
+    - B04 (Red, 10m)
+    - B8A (NIR Narrow, 20m) - NOT B08!
+    - B11 (SWIR1, 20m)
+    - B12 (SWIR2, 20m)
+    
+    The bands are downloaded separately by resolution to maintain quality.
+    Use src.features.hls_processor.prepare_hls_image() to resample and stack.
+    
+    Parameters
+    ----------
+    bbox_coords : dict
+        Bounding box with keys: min_lat, min_lon, max_lat, max_lon
+    config : SHConfig
+        Sentinel Hub configuration
+    date_from : str, optional
+        Start date in format YYYY-MM-DD
+    date_to : str, optional
+        End date in format YYYY-MM-DD
+    resolution : int, default=10
+        Target resolution for output dimensions (10m recommended)
+    max_cloud_coverage : float, default=0.3
+        Maximum cloud coverage (0.0 to 1.0)
+        
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - 'bands_10m': dict with B02, B03, B04 (numpy arrays)
+        - 'bands_20m': dict with B8A, B11, B12 (numpy arrays)
+        - 'metadata': dict with bbox, dimensions, dates, etc.
+        
+    Examples
+    --------
+    >>> bbox = {'min_lat': 32.45, 'min_lon': -115.35,
+    ...         'max_lat': 32.55, 'max_lon': -115.25}
+    >>> config = create_sentinel_config(client_id, client_secret)
+    >>> data = download_hls_bands(bbox, config)
+    >>> print(data['bands_10m']['B02'].shape)
+    (512, 512)
+    >>> print(data['bands_20m']['B8A'].shape)
+    (256, 256)
+    """
+    if not date_to:
+        date_to = datetime.now()
+    else:
+        date_to = datetime.strptime(date_to, '%Y-%m-%d')
+
+    if not date_from:
+        date_from = date_to - timedelta(days=30)
+    else:
+        date_from = datetime.strptime(date_from, '%Y-%m-%d')
+
+    bbox = BBox(
+        bbox=[
+            bbox_coords['min_lon'],
+            bbox_coords['min_lat'],
+            bbox_coords['max_lon'],
+            bbox_coords['max_lat']
+        ],
+        crs=CRS.WGS84
+    )
+
+    bbox_size_10m = bbox_to_dimensions(bbox, resolution=10)
+    bbox_size_20m = bbox_to_dimensions(bbox, resolution=20)
+
+    max_dimension = 2500
+    width_10m, height_10m = bbox_size_10m
+    if width_10m > max_dimension or height_10m > max_dimension:
+        scale = min(max_dimension / width_10m, max_dimension / height_10m)
+        bbox_size_10m = (int(width_10m * scale), int(height_10m * scale))
+        bbox_size_20m = (int(bbox_size_10m[0] / 2), int(bbox_size_10m[1] / 2))
+
+    evalscript_10m = """
+    //VERSION=3
+    function setup() {
+        return {
+            input: [{
+                bands: ["B02", "B03", "B04"],
+                units: "REFLECTANCE"
+            }],
+            output: {
+                bands: 3,
+                sampleType: "FLOAT32"
+            }
+        };
+    }
+
+    function evaluatePixel(sample) {
+        return [sample.B02, sample.B03, sample.B04];
+    }
+    """
+
+    evalscript_20m = """
+    //VERSION=3
+    function setup() {
+        return {
+            input: [{
+                bands: ["B8A", "B11", "B12"],
+                units: "REFLECTANCE"
+            }],
+            output: {
+                bands: 3,
+                sampleType: "FLOAT32"
+            }
+        };
+    }
+
+    function evaluatePixel(sample) {
+        return [sample.B8A, sample.B11, sample.B12];
+    }
+    """
+
+    request_10m = SentinelHubRequest(
+        evalscript=evalscript_10m,
+        input_data=[
+            SentinelHubRequest.input_data(
+                data_collection=DataCollection.SENTINEL2_L2A,
+                time_interval=(date_from, date_to),
+                maxcc=max_cloud_coverage
+            )
+        ],
+        responses=[
+            SentinelHubRequest.output_response('default', MimeType.TIFF)
+        ],
+        bbox=bbox,
+        size=bbox_size_10m,
+        config=config
+    )
+
+    request_20m = SentinelHubRequest(
+        evalscript=evalscript_20m,
+        input_data=[
+            SentinelHubRequest.input_data(
+                data_collection=DataCollection.SENTINEL2_L2A,
+                time_interval=(date_from, date_to),
+                maxcc=max_cloud_coverage
+            )
+        ],
+        responses=[
+            SentinelHubRequest.output_response('default', MimeType.TIFF)
+        ],
+        bbox=bbox,
+        size=bbox_size_20m,
+        config=config
+    )
+
+    data_10m = request_10m.get_data()[0]
+    data_20m = request_20m.get_data()[0]
+
+    # Validate downloaded data
+    if data_10m is None or data_20m is None:
+        raise ValueError(
+            f"No Sentinel-2 data available for bbox {bbox_coords} "
+            f"between {date_from.strftime('%Y-%m-%d')} and {date_to.strftime('%Y-%m-%d')}. "
+            "Try: 1) Different date range (last 60 days), "
+            "2) Larger area, 3) Higher cloud coverage threshold"
+        )
+    
+    # Check for all-zero data (invalid observations)
+    if np.all(data_10m == 0) or np.all(data_20m == 0):
+        raise ValueError(
+            f"Downloaded Sentinel-2 data is all zeros for bbox {bbox_coords}. "
+            "Possible causes: No valid observations, 100% cloud coverage, or API error. "
+            "Try: 1) Different date range, 2) Lower max_cloud_coverage, 3) Verify area has Sentinel-2 coverage"
+        )
+    
+    # Check for minimal valid data (threshold: at least 5% non-zero)
+    non_zero_10m = np.count_nonzero(data_10m) / data_10m.size
+    non_zero_20m = np.count_nonzero(data_20m) / data_20m.size
+    
+    if non_zero_10m < 0.05 or non_zero_20m < 0.05:
+        raise ValueError(
+            f"Insufficient valid data ({non_zero_10m:.1%} and {non_zero_20m:.1%} non-zero). "
+            "Area likely has no valid observations. "
+            "Try: 1) Different date range, 2) Different location, 3) Check Sentinel-2 coverage map"
+        )
+
+    bands_10m = {
+        'B02': data_10m[:, :, 0],
+        'B03': data_10m[:, :, 1],
+        'B04': data_10m[:, :, 2]
+    }
+
+    bands_20m = {
+        'B8A': data_20m[:, :, 0],
+        'B11': data_20m[:, :, 1],
+        'B12': data_20m[:, :, 2]
+    }
+
+    return {
+        'bands_10m': bands_10m,
+        'bands_20m': bands_20m,
+        'metadata': {
+            'bbox': bbox,
+            'bbox_coords': bbox_coords,
+            'dimensions_10m': bbox_size_10m,
+            'dimensions_20m': bbox_size_20m,
+            'date_from': date_from.strftime('%Y-%m-%d'),
+            'date_to': date_to.strftime('%Y-%m-%d'),
+            'resolution': resolution,
+            'bands_10m': ['B02', 'B03', 'B04'],
+            'bands_20m': ['B8A', 'B11', 'B12']
+        }
+    }
+
+
 def test_sentinel_connection(config: SHConfig) -> Dict:
     """
     Test connection with Sentinel Hub.
