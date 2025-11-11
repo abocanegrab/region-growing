@@ -135,11 +135,11 @@ class EmbeddingsExtractResponse(BaseModel):
 
 class EmbeddingsSimilarityResponse(BaseModel):
     """Response model for similarity computation"""
-    
+
     success: bool = Field(..., description="Whether computation was successful")
     data: Optional[Dict[str, Any]] = Field(None, description="Similarity results")
     message: Optional[str] = Field(None, description="Status or error message")
-    
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -156,6 +156,81 @@ class EmbeddingsSimilarityResponse(BaseModel):
                         "region_b_metadata": {}
                     },
                     "message": "Similarity computed successfully"
+                }
+            ]
+        }
+    }
+
+
+class SegmentationMetricsSchema(BaseModel):
+    """Schema for segmentation metrics"""
+
+    num_regions: int = Field(..., description="Number of detected regions")
+    coherence: float = Field(..., description="Spatial coherence percentage")
+    avg_region_size: float = Field(..., description="Average region size in pixels")
+    std_region_size: float = Field(..., description="Standard deviation of region sizes")
+    largest_region_size: int = Field(..., description="Largest region size in pixels")
+    smallest_region_size: int = Field(..., description="Smallest region size in pixels")
+    processing_time: float = Field(..., description="Processing time in seconds")
+
+
+class ComparisonMetrics(BaseModel):
+    """Schema for comparison metrics between Classic RG and MGRG"""
+
+    classic: SegmentationMetricsSchema = Field(..., description="Classic RG metrics")
+    mgrg: SegmentationMetricsSchema = Field(..., description="MGRG metrics")
+    differences: Dict[str, float] = Field(..., description="Differences between methods")
+    winner: str = Field(..., description="Winner based on coherence (classic or mgrg)")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "classic": {
+                        "num_regions": 15,
+                        "coherence": 72.5,
+                        "avg_region_size": 680.3,
+                        "std_region_size": 245.8,
+                        "largest_region_size": 1200,
+                        "smallest_region_size": 150,
+                        "processing_time": 1.23
+                    },
+                    "mgrg": {
+                        "num_regions": 3,
+                        "coherence": 94.2,
+                        "avg_region_size": 3400.5,
+                        "std_region_size": 890.2,
+                        "largest_region_size": 5000,
+                        "smallest_region_size": 2100,
+                        "processing_time": 1.45
+                    },
+                    "differences": {
+                        "num_regions": -12,
+                        "coherence": 21.7,
+                        "avg_size": 2720.2,
+                        "time": 0.22
+                    },
+                    "winner": "mgrg"
+                }
+            ]
+        }
+    }
+
+
+class ComparisonResponse(BaseModel):
+    """Response schema for comparison generation"""
+
+    comparison_id: str = Field(..., description="Unique comparison identifier")
+    status: str = Field(..., description="Processing status")
+    message: str = Field(..., description="Status message")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "comparison_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                    "status": "processing",
+                    "message": "Comparison started successfully"
                 }
             ]
         }

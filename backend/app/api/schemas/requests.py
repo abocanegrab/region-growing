@@ -109,7 +109,7 @@ class EmbeddingsExtractRequest(BaseModel):
 
 class EmbeddingsSimilarityRequest(BaseModel):
     """Request model for computing similarity between two regions"""
-    
+
     bbox_a: BBoxRequest = Field(..., description="First bounding box")
     bbox_b: BBoxRequest = Field(..., description="Second bounding box")
     date_from: Optional[str] = Field(
@@ -122,7 +122,7 @@ class EmbeddingsSimilarityRequest(BaseModel):
         description="End date for image search (YYYY-MM-DD)",
         pattern=r'^\d{4}-\d{2}-\d{2}$'
     )
-    
+
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -141,6 +141,71 @@ class EmbeddingsSimilarityRequest(BaseModel):
                     },
                     "date_from": "2024-01-01",
                     "date_to": "2024-01-31"
+                }
+            ]
+        }
+    }
+
+
+class ComparisonRequest(BaseModel):
+    """Request schema for A/B comparison between Classic RG and MGRG"""
+
+    bbox: BBoxRequest = Field(..., description="Bounding box coordinates")
+    date_from: str = Field(
+        ...,
+        description="Start date in YYYY-MM-DD format",
+        pattern=r'^\d{4}-\d{2}-\d{2}$'
+    )
+    date_to: Optional[str] = Field(
+        None,
+        description="End date in YYYY-MM-DD format (defaults to date_from)",
+        pattern=r'^\d{4}-\d{2}-\d{2}$'
+    )
+    classic_threshold: float = Field(
+        0.1,
+        description="NDVI threshold for classic RG",
+        ge=0.0,
+        le=1.0
+    )
+    mgrg_threshold: float = Field(
+        0.85,
+        description="Cosine similarity threshold for MGRG",
+        ge=0.0,
+        le=1.0
+    )
+    seed_method: str = Field(
+        "grid",
+        description="Seed generation method (grid or kmeans)",
+        pattern=r'^(grid|kmeans)$'
+    )
+    export_formats: list = Field(
+        ["png"],
+        description="Export formats (png, pdf, svg)"
+    )
+    dpi: int = Field(
+        300,
+        description="Resolution for raster exports",
+        ge=72,
+        le=600
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "bbox": {
+                        "min_lat": 32.45,
+                        "min_lon": -115.35,
+                        "max_lat": 32.55,
+                        "max_lon": -115.25
+                    },
+                    "date_from": "2024-01-15",
+                    "date_to": "2024-01-15",
+                    "classic_threshold": 0.1,
+                    "mgrg_threshold": 0.85,
+                    "seed_method": "kmeans",
+                    "export_formats": ["png", "pdf"],
+                    "dpi": 300
                 }
             ]
         }
