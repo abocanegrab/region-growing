@@ -1230,6 +1230,289 @@ El notebook [`notebooks/experimental/embeddings-demo.ipynb`](notebooks/experimen
 
 ---
 
+## 🎨 US-008: Comparativa A/B Visual - Classic RG vs MGRG
+
+### Sistema de Comparación Visual y Métricas
+
+La User Story 008 implementa un **sistema completo de comparación A/B** entre los dos métodos de segmentación: Classic Region Growing (basado en NDVI) y MGRG (basado en embeddings semánticos).
+
+#### Módulos Implementados
+
+**1. Módulo de Métricas de Comparación**
+
+**Ubicación:** [`src/utils/comparison_metrics.py`](src/utils/comparison_metrics.py)
+
+Proporciona cálculo cuantitativo de métricas de segmentación:
+
+```python
+from src.utils.comparison_metrics import compare_segmentations, SegmentationMetrics
+
+# Comparar dos segmentaciones
+metrics = compare_segmentations(
+    classic_seg=classic_segmentation,
+    mgrg_seg=mgrg_segmentation,
+    classic_time=1.23,
+    mgrg_time=1.45
+)
+
+print(f"Winner: {metrics['winner']}")
+print(f"Classic coherence: {metrics['classic'].coherence:.2f}%")
+print(f"MGRG coherence: {metrics['mgrg'].coherence:.2f}%")
+```
+
+**Métricas calculadas:**
+- **Coherencia espacial**: Porcentaje de píxeles etiquetados (cobertura)
+- **Número de regiones**: Total de regiones segmentadas
+- **Estadísticas de tamaño**: Media, desviación estándar, min/max de tamaños
+- **Tiempo de procesamiento**: Duración de cada algoritmo
+- **Diferencias**: Comparación cuantitativa entre métodos
+- **Ganador**: Determinado por coherencia espacial
+
+**2. Módulo de Visualización A/B**
+
+**Ubicación:** [`src/visualization/ab_comparison.py`](src/visualization/ab_comparison.py)
+
+Genera visualizaciones profesionales para comparación:
+
+```python
+from src.visualization.ab_comparison import create_side_by_side_plot, export_high_resolution
+
+# Crear comparación lado a lado
+fig, image = create_side_by_side_plot(
+    rgb_image=rgb_image,
+    classic_seg=classic_segmentation,
+    mgrg_seg=mgrg_segmentation,
+    metrics=metrics,
+    title="Comparativa A/B: Region Growing",
+    save_path="output/comparison.png",
+    dpi=300
+)
+
+# Exportar en múltiples formatos
+exported_paths = export_high_resolution(
+    fig=fig,
+    base_path="output/comparison",
+    dpi=300,
+    formats=["png", "pdf", "svg"]
+)
+```
+
+**Visualizaciones disponibles:**
+- **Side-by-Side Plot**: Comparación visual 2x3 con RGB, segmentaciones, overlays y tabla de métricas
+- **Metrics Table**: Tabla comparativa con métricas detalladas
+- **Overlay Comparison**: Superposición de segmentaciones sobre imagen RGB
+- **Failure Case Analysis**: Análisis detallado de casos problemáticos
+- **Multi-Format Export**: Exportación en PNG, PDF y SVG a alta resolución
+
+#### API Endpoints
+
+**Endpoint de Comparación:**
+
+```bash
+POST /api/comparison/generate
+```
+
+**Request:**
+```json
+{
+  "bbox": {
+    "min_lat": 32.45,
+    "min_lon": -115.35,
+    "max_lat": 32.55,
+    "max_lon": -115.25
+  },
+  "date_from": "2024-01-15",
+  "date_to": "2024-01-15",
+  "classic_threshold": 0.1,
+  "mgrg_threshold": 0.85,
+  "seed_method": "kmeans",
+  "export_formats": ["png", "pdf"],
+  "dpi": 300
+}
+```
+
+**Response:**
+```json
+{
+  "comparison_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "processing",
+  "message": "Comparison started successfully"
+}
+```
+
+**Schemas Pydantic:**
+- [`ComparisonRequest`](backend/app/api/schemas/requests.py:150-212) - Validación de parámetros de entrada
+- [`SegmentationMetricsSchema`](backend/app/api/schemas/responses.py:165-174) - Esquema de métricas individuales
+- [`ComparisonMetrics`](backend/app/api/schemas/responses.py:177-217) - Esquema de comparación completa
+- [`ComparisonResponse`](backend/app/api/schemas/responses.py:220-237) - Respuesta del endpoint
+
+#### Notebook Demostrativo
+
+El notebook [`notebooks/experimental/ab-comparison.ipynb`](notebooks/experimental/ab-comparison.ipynb) incluye:
+
+1. **Setup y carga de datos**: Configuración del entorno y carga de imágenes satelitales
+2. **Comparación cuantitativa**: Métricas detalladas con tablas comparativas
+3. **Comparación visual**: Visualizaciones lado a lado de ambos métodos
+4. **Casos de fallo documentados**: Análisis de 3 zonas problemáticas:
+   - **Mexicali**: Sombras de nubes → Classic RG fragmenta, MGRG preserva coherencia
+   - **Bajío**: Vegetación montañosa compleja → Ambos métodos sobre-segmentan
+   - **Sinaloa**: Riego por goteo (parcelas pequeñas) → Classic RG detecta mejor micro-patrones
+5. **Análisis de sensibilidad**: Evaluación de thresholds (0.05-0.20 NDVI, 0.75-0.95 similitud coseno)
+6. **Recomendaciones**: Guías de uso según tipo de terreno
+7. **Exportación**: Guardado de comparativas en múltiples formatos
+
+#### Comparación de Resultados
+
+**Métricas Típicas (Zona Mexicali):**
+
+| Métrica | Classic RG | MGRG | Diferencia |
+|---------|------------|------|------------|
+| Regiones | 15 | 3 | -12 (-80%) |
+| Coherencia | 72.5% | 94.2% | +21.7% |
+| Tamaño promedio | 680 px | 3400 px | +2720 px |
+| Desviación estándar | 245 px | 890 px | +645 px |
+| Tiempo | 1.23s | 1.45s | +0.22s |
+| **Ganador** | - | **MGRG** | Por coherencia |
+
+**Fortalezas de cada método:**
+
+**Classic Region Growing:**
+- ✅ Muy rápido (~1.2s)
+- ✅ Detecta micro-patrones (riego por goteo, cultivos pequeños)
+- ✅ No requiere GPU ni modelo pre-entrenado
+- ❌ Sobre-segmentación en áreas homogéneas
+- ❌ Sensible a sombras de nubes
+- ❌ Fragmentación en terrenos complejos
+
+**MGRG (Metric-Guided RG):**
+- ✅ Alta coherencia espacial (90-95%)
+- ✅ Segmentación semánticamente consistente
+- ✅ Robusta a sombras y ruido
+- ✅ Reduce regiones en 70-80%
+- ❌ Más lento (+20-40%)
+- ❌ Requiere GPU y modelo Prithvi
+- ❌ Puede perder micro-detalles
+
+#### Tests y Cobertura
+
+**Tests unitarios:**
+- [`tests/unit/test_comparison_metrics.py`](tests/unit/test_comparison_metrics.py) - 45 tests para cálculo de métricas
+- [`tests/unit/test_ab_comparison.py`](tests/unit/test_ab_comparison.py) - 30 tests para visualización
+
+**Tests de integración:**
+- [`tests/integration/test_comparison_workflow.py`](tests/integration/test_comparison_workflow.py) - 6 tests de flujo completo
+
+**Cobertura de código:** >70% (objetivo alcanzado)
+
+```bash
+# Ejecutar tests de US-008
+poetry run pytest tests/unit/test_comparison_metrics.py -v
+poetry run pytest tests/unit/test_ab_comparison.py -v
+poetry run pytest tests/integration/test_comparison_workflow.py -v
+
+# Verificar cobertura
+poetry run pytest tests/ --cov=src/utils/comparison_metrics --cov=src/visualization/ab_comparison
+```
+
+#### Uso Recomendado
+
+**Para agricultura intensiva de riego (parcelas pequeñas):**
+```python
+# Usar Classic RG para detectar micro-patrones
+comparison_params = {
+    "classic_threshold": 0.08,
+    "mgrg_threshold": 0.85,
+    "seed_method": "grid",  # Grid denso para detalles
+    "recommendation": "Classic RG"
+}
+```
+
+**Para grandes extensiones homogéneas:**
+```python
+# Usar MGRG para coherencia y eficiencia
+comparison_params = {
+    "classic_threshold": 0.12,
+    "mgrg_threshold": 0.85,
+    "seed_method": "kmeans",  # K-Means para representatividad
+    "recommendation": "MGRG"
+}
+```
+
+**Para terrenos complejos (montaña, bosque):**
+```python
+# Comparar ambos métodos para validación cruzada
+comparison_params = {
+    "classic_threshold": 0.10,
+    "mgrg_threshold": 0.80,
+    "seed_method": "kmeans",
+    "recommendation": "Compare both"
+}
+```
+
+#### Exportación de Resultados
+
+**Formatos soportados:**
+- **PNG** (300-600 DPI): Presentaciones, informes
+- **PDF** (vectorial): Documentos académicos
+- **SVG** (vectorial): Edición posterior en Illustrator/Inkscape
+
+**Ejemplo de exportación:**
+```python
+from src.visualization.ab_comparison import export_high_resolution
+
+# Exportar en todos los formatos
+paths = export_high_resolution(
+    fig=comparison_fig,
+    base_path="output/mexicali_comparison",
+    dpi=600,
+    formats=["png", "pdf", "svg"]
+)
+
+# Paths retornados:
+# {
+#   "png": "output/mexicali_comparison.png",
+#   "pdf": "output/mexicali_comparison.pdf",
+#   "svg": "output/mexicali_comparison.svg"
+# }
+```
+
+#### Análisis de Casos de Fallo
+
+El sistema incluye funcionalidad para documentar y analizar casos problemáticos:
+
+```python
+from src.visualization.ab_comparison import generate_failure_case_analysis
+
+path = generate_failure_case_analysis(
+    zone_name="mexicali_cloud_shadow",
+    rgb_image=rgb,
+    classic_seg=classic_result,
+    mgrg_seg=mgrg_result,
+    ndvi=ndvi_array,
+    failure_description="Cloud shadows cause fragmentation in Classic RG",
+    save_dir="output/failure_cases"
+)
+```
+
+Genera análisis completo con:
+- Comparación visual RGB + segmentaciones + NDVI
+- Métricas cuantitativas de ambos métodos
+- Descripción del problema
+- Recomendaciones específicas
+
+#### Referencias
+
+**Visualización científica:**
+- Hunter, J.D. (2007). "Matplotlib: A 2D graphics environment". *Computing in Science & Engineering*, 9(3), 90-95.
+
+**Métricas de segmentación:**
+- Martin, D., et al. (2001). "A database of human segmented natural images". *ICCV*, 416-423.
+
+**Comparación de algoritmos:**
+- Unnikrishnan, R., et al. (2007). "Toward objective evaluation of image segmentation algorithms". *IEEE TPAMI*, 29(6), 929-944.
+
+---
+
 ## 🚀 US-007: MGRG - Algoritmo de Segmentación Semántica
 
 ### Implementación de Metric-Guided Region Growing (MGRG)

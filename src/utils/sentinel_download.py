@@ -225,16 +225,17 @@ def download_hls_bands(
     max_cloud_coverage: float = 0.3
 ) -> Dict:
     """
-    Download HLS (Harmonized Landsat Sentinel-2) bands for Prithvi model.
-    
-    This function downloads the 6 specific bands required by Prithvi:
+    Download HLS (Harmonized Landsat Sentinel-2) bands for Prithvi model + NDVI.
+
+    This function downloads the 6 specific bands required by Prithvi plus B08 for NDVI:
     - B02 (Blue, 10m)
     - B03 (Green, 10m)
     - B04 (Red, 10m)
-    - B8A (NIR Narrow, 20m) - NOT B08!
+    - B08 (NIR Broad, 10m) - For NDVI calculation
+    - B8A (NIR Narrow, 20m) - For Prithvi embeddings
     - B11 (SWIR1, 20m)
     - B12 (SWIR2, 20m)
-    
+
     The bands are downloaded separately by resolution to maintain quality.
     Use src.features.hls_processor.prepare_hls_image() to resample and stack.
     
@@ -257,7 +258,7 @@ def download_hls_bands(
     -------
     dict
         Dictionary with keys:
-        - 'bands_10m': dict with B02, B03, B04 (numpy arrays)
+        - 'bands_10m': dict with B02, B03, B04, B08 (numpy arrays)
         - 'bands_20m': dict with B8A, B11, B12 (numpy arrays)
         - 'metadata': dict with bbox, dimensions, dates, etc.
         
@@ -307,18 +308,18 @@ def download_hls_bands(
     function setup() {
         return {
             input: [{
-                bands: ["B02", "B03", "B04"],
+                bands: ["B02", "B03", "B04", "B08"],
                 units: "REFLECTANCE"
             }],
             output: {
-                bands: 3,
+                bands: 4,
                 sampleType: "FLOAT32"
             }
         };
     }
 
     function evaluatePixel(sample) {
-        return [sample.B02, sample.B03, sample.B04];
+        return [sample.B02, sample.B03, sample.B04, sample.B08];
     }
     """
 
@@ -410,7 +411,8 @@ def download_hls_bands(
     bands_10m = {
         'B02': data_10m[:, :, 0],
         'B03': data_10m[:, :, 1],
-        'B04': data_10m[:, :, 2]
+        'B04': data_10m[:, :, 2],
+        'B08': data_10m[:, :, 3]
     }
 
     bands_20m = {
@@ -430,7 +432,7 @@ def download_hls_bands(
             'date_from': date_from.strftime('%Y-%m-%d'),
             'date_to': date_to.strftime('%Y-%m-%d'),
             'resolution': resolution,
-            'bands_10m': ['B02', 'B03', 'B04'],
+            'bands_10m': ['B02', 'B03', 'B04', 'B08'],
             'bands_20m': ['B8A', 'B11', 'B12']
         }
     }
