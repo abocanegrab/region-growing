@@ -1,0 +1,7 @@
+Class,Objects,Area (ha),Mean NDVI,Std NDVI
+Water (Agua),1,0.95,0.085,0.000
+Urban (Urbano),0,0.00,0.000,0.000
+Bare Soil (Suelo Desnudo),19,10156.30,0.174,0.031
+Vigorous Crop (Cultivo Vigoroso),0,0.00,0.000,0.000
+Stressed Crop (Cultivo Estresado),3,92.29,0.354,0.014
+Grass/Shrub (Pasto/Arbustos),0,0.00,0.000,0.000
