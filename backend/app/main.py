@@ -3,7 +3,7 @@ FastAPI main application
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import health, analysis, embeddings
+from app.api.routes import health, analysis, embeddings, hierarchical
 from config.config import Settings
 from app.utils import setup_logging, get_logger
 
@@ -59,6 +59,10 @@ app = FastAPI(
         {
             "name": "Embeddings",
             "description": "HLS embeddings extraction and similarity endpoints (US-006)"
+        },
+        {
+            "name": "Hierarchical",
+            "description": "End-to-end hierarchical analysis pipeline (US-011)"
         }
     ],
     lifespan=lifespan
@@ -77,6 +81,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(analysis.router, prefix="/api/analysis")
 app.include_router(embeddings.router, prefix="/api/embeddings", tags=["Embeddings"])
+app.include_router(hierarchical.router, prefix="/api/analysis", tags=["Hierarchical"])
 
 # Root endpoint
 @app.get("/", tags=["Health"])
