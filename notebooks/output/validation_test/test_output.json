@@ -1,0 +1,100 @@
+{
+  "metadata": {
+    "bbox": [
+      -115.35,
+      32.45,
+      -115.3,
+      32.5
+    ],
+    "date_from": "2025-10-15",
+    "date_to": "2025-10-15",
+    "resolution": 10.0,
+    "mgrg_threshold": 0.95
+  },
+  "segmentation": {
+    "method": "MGRG",
+    "regions": 4
+  },
+  "classification": [
+    {
+      "region_id": 1,
+      "class": "Vigorous Crop (Cultivo Vigoroso)",
+      "class_id": 3,
+      "confidence": 0.85,
+      "area_ha": 10.0,
+      "mean_ndvi": 0.7,
+      "std_ndvi": 0.05
+    },
+    {
+      "region_id": 2,
+      "class": "Stressed Crop (Cultivo Estresado)",
+      "class_id": 4,
+      "confidence": 0.8,
+      "area_ha": 8.0,
+      "mean_ndvi": 0.45,
+      "std_ndvi": 0.08
+    },
+    {
+      "region_id": 3,
+      "class": "Stressed Crop (Cultivo Estresado)",
+      "class_id": 4,
+      "confidence": 0.75,
+      "area_ha": 6.0,
+      "mean_ndvi": 0.3,
+      "std_ndvi": 0.1
+    },
+    {
+      "region_id": 4,
+      "class": "Water (Agua)",
+      "class_id": 0,
+      "confidence": 0.9,
+      "area_ha": 5.0,
+      "mean_ndvi": -0.2,
+      "std_ndvi": 0.02
+    }
+  ],
+  "stress_analysis": {
+    "low": {
+      "count": 1,
+      "area_ha": 10.0,
+      "regions": [
+        {
+          "region_id": 1,
+          "class_name": "Vigorous Crop (Cultivo Vigoroso)",
+          "ndvi": 0.7,
+          "area_ha": 10.0
+        }
+      ]
+    },
+    "medium": {
+      "count": 1,
+      "area_ha": 8.0,
+      "regions": [
+        {
+          "region_id": 2,
+          "class_name": "Stressed Crop (Cultivo Estresado)",
+          "ndvi": 0.45,
+          "area_ha": 8.0
+        }
+      ]
+    },
+    "high": {
+      "count": 1,
+      "area_ha": 6.0,
+      "regions": [
+        {
+          "region_id": 3,
+          "class_name": "Stressed Crop (Cultivo Estresado)",
+          "ndvi": 0.3,
+          "area_ha": 6.0
+        }
+      ]
+    }
+  },
+  "summary": {
+    "vigorous_crop_ha": 10.0,
+    "stressed_crop_ha": 14.0,
+    "water_ha": 5.0
+  },
+  "processing_time": {}
+}
