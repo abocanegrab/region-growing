@@ -70,6 +70,7 @@ coverage.xml
 *.cover
 
 docs/referencias
+docs/notebooks_pdf
 
 # Secrets
 *secrets*.txt
@@ -89,3 +90,4 @@ img/*.tif
 # Embeddings (generated files)
 *.npz
 
+data/esa_worldcover/*.tif

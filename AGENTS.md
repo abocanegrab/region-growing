@@ -599,11 +599,12 @@ model.fit(X_train, y_train)
 3. **Comentarios concisos** y técnicos, no narrativos.
 4. **Mensajes de log simples** y directos.
 5. **Usar markdown cells** para estructura en notebooks, no prints decorativos.
+6. **No crear archivos md cada que haces algo** generar solo un md al final cuando se concluyan todas las tareas de la US y guardarlo en docs/us-resolved/us-XXX.md don XXX es el numero de us resuelta 
 
 ---
 
 **Versión**: 1.0
-**Última actualización**: Nviembre 2025
+**Última actualización**: Noviembre 2025
 **Mantenido por**: Equipo 24
 
 ---

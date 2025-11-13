@@ -877,7 +877,82 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 ---
 
-### US-9: Implementar análisis jerárquico
+### US-009: Validación Cuantitativa con Reference Dataset (IoU/F1-Score)
+
+- **Como** investigador
+- **Quiero** validar cuantitativamente la precisión de los métodos de segmentación (Classic RG y MGRG) contra un dataset de referencia externo
+- **Para que** podamos probar científicamente la superioridad de nuestro método usando métricas estándar (IoU, mIoU, F1-Score) y no solo métricas internas (coherencia espacial)
+
+**Criterios de Aceptación:**
+- ✅ Funcionalidad Core
+ - Descarga de Dynamic World masks para 3 zonas (Mexicali, Bajío, Sinaloa)
+ - Alineación espacial entre reference dataset y segmentaciones propias
+ - Cálculo de métricas estándar: IoU, mIoU, F1-Score, Pixel Accuracy
+ - Comparación cuantitativa: Classic RG vs MGRG
+ - Análisis de errores: False Positives, False Negatives
+- ✅ Notebook de Validación
+ - `notebooks/validation/ground_truth_validation.ipynb`
+- ✅ Módulo de Métricas Reutilizable : `src/utils/validation_metrics.py` con funciones:
+  - `calculate_iou(pred, gt, class_id)`
+  - `calculate_miou(pred, gt, num_classes)`
+  - `calculate_f1_score(pred, gt, class_id)`
+  - `calculate_pixel_accuracy(pred, gt)`
+  - `align_ground_truth(gt_path, reference_path)`
+  - `generate_confusion_matrix(pred, gt)`
+  - `calculate_boundary_precision(pred, gt)`
+- ✅ Tests unitarios: >70% cobertura
+
+---
+
+### US-010:Clasificación Semántica de Objetos Post-Segmentación
+- **Como** investigador
+- **Quiero** clasificar semánticamente cada objeto segmentado por MGRG (asignar etiquetas como "Agua", "Cultivo Vigoroso", "Urbano", "Suelo Desnudo")
+- **Para que** el resultado final no sea solo un conjunto de regiones anónimas (Objeto 1-N), sino un mapa de cobertura terrestre clasificado e interpretable
+**Criterios de Aceptación:**
+- ✅Funcionalidad Core
+ - Definición de taxonomía de 6 clases LULC
+ - Clasificador zero-shot basado en NDVI + embeddings Prithvi
+ - Clasificación jerárquica: Clase → Estrés (solo cultivos)
+ - Aplicable a segmentaciones MGRG (156 regiones)
+ - Mapa semántico coloreado por clase
+- ✅ Módulo Reutilizable: `src/classification/zero_shot_classifier.py`:
+  - Clase `SemanticClassifier`
+  - `classify_region(region_mask)` → class_id, confidence
+  - `classify_all_regions(segmentation)` → dict de clasificaciones
+  - `generate_semantic_map(segmentation, classifications)` → colored map
+- ✅ Notebook Demostrativo: `notebooks/classification/semantic_classification.ipynb`
+ - Aplicación a 3 zonas (Mexicali, Bajío, Sinaloa)
+ - Visualización de mapa semántico
+ - Estadísticas: hectáreas por clase, distribución
+ - Cross-validation con Dynamic World
+- ✅Tests unitarios: >70% cobertura
+
+---
+### US-011: Sistema de Análisis Jerárquico End-to-End (API REST + CLI)
+- **Como** usuario final (agrónomo, investigador, desarrollador)
+- **Quiero** un sistema completo que me permita ejecutar el pipeline MGRG desde imagen hasta análisis de estrés
+- **Para que** pueda obtener resultados interpretables (objetos clasificados con análisis de estrés) mediante:
+  - **API REST** para integración en aplicaciones web/móviles
+  - **CLI script** para uso en terminal, notebooks, o automatización
+**Criterios de Aceptación:**
+- ✅ **API REST Endpoint**: `POST /api/analysis/hierarchical`
+  - Parámetros: bbox, date, threshold_mgrg, export_formats
+  - Procesamiento asíncrono con Celery (opcional)
+  - Respuesta: analysis_id, status, download_url
+- ✅ **CLI Script**: `scripts/analyze_region.py`
+  - Argumentos: `--bbox`, `--date`, `--output`, `--threshold`
+  - Ejecución síncrona con barra de progreso
+  - Output: GeoTIFF, JSON, PNG visualizaciones
+- ✅ **Pipeline Completo** (6 pasos):
+  1. Descargar Sentinel-2 (bandas HLS)
+  2. Extraer embeddings Prithvi
+  3. Segmentar con MGRG
+  4. Clasificar objetos (zero-shot)
+  5. Analizar estrés vegetal (solo cultivos)
+  6. Generar reporte (JSON + visualizaciones)
+---
+
+### US-012: Implementar análisis jerárquico
 
 - **Como** usuario
 - **Quiero** ver análisis jerárquico (objeto → estrés)
@@ -905,7 +980,29 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 #### **Épica 3: Documentación y Entrega (Días 8-10)**
 
-### US-10: Redactar artículo científico
+### US-13: Crear Google Colab ejecutable
+
+- **Como** equipo
+- **Quiero** crear un Google Colab ejecutable de principio a fin
+- **Para que** para tener una demo de nuestro proyecto
+**Criterios de Aceptación:**
+- ✅ Notebook limpio y bien documentado
+- ✅ Celdas de markdown explicativas entre código
+- ✅ Ambos métodos implementados (RG Clásico + MGRG)
+- ✅ Comparativa A/B funcional con visualizaciones
+- ✅ Ejecutable sin errores de principio a fin
+- ✅ Sección de roles del equipo al final
+- ✅ Requirements especificados
+- ✅ Imágenes de ejemplo incluidas
+- ✅ Comentarios en código complejo
+
+**Estimación:** 8 horas  
+**Responsables:** Carlos Bocanegra + Edgar Oviedo  
+**Estado:** ⏳ Pendiente
+
+---
+
+### US-14: Redactar artículo científico
 
 - **Como** documentador
 - **Quiero** redactar un artículo científico completo
@@ -944,29 +1041,7 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 ---
 
-### US-11: Crear Google Colab ejecutable
-
-- **Como** equipo
-- **Quiero** crear un Google Colab ejecutable de principio a fin
-- **Para que** para tener una demo de nuestro proyecto
-**Criterios de Aceptación:**
-- ✅ Notebook limpio y bien documentado
-- ✅ Celdas de markdown explicativas entre código
-- ✅ Ambos métodos implementados (RG Clásico + MGRG)
-- ✅ Comparativa A/B funcional con visualizaciones
-- ✅ Ejecutable sin errores de principio a fin
-- ✅ Sección de roles del equipo al final
-- ✅ Requirements especificados
-- ✅ Imágenes de ejemplo incluidas
-- ✅ Comentarios en código complejo
-
-**Estimación:** 8 horas  
-**Responsables:** Carlos Bocanegra + Edgar Oviedo  
-**Estado:** ⏳ Pendiente
-
----
-
-### US-12: Grabar video tutorial
+### US-15: Grabar video tutorial
 
 - **Como** equipo
 - **Quiero** grabar un video tutorial de 5-10 minutos
@@ -993,7 +1068,7 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 ---
 
-### US-13: Crear presentación para clase
+### US-16: Crear presentación para clase
 
 - **Como** presentador
 - **Quiero** crear una presentación profesional
@@ -1250,7 +1325,7 @@ if __name__ == "__main__":
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.11.4",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3", }}
   }
 }
 ```
