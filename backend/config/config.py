@@ -1,5 +1,11 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
+from pathlib import Path
+
+
+# Root directory of the project
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+ENV_FILE = PROJECT_ROOT / '.env'
 
 
 class Settings(BaseSettings):
@@ -9,7 +15,7 @@ class Settings(BaseSettings):
     All settings are loaded from environment variables or .env file
     """
     model_config = SettingsConfigDict(
-        env_file='backend/.env',
+        env_file=str(ENV_FILE),
         env_file_encoding='utf-8',
         case_sensitive=False,
         extra='ignore'
@@ -24,9 +30,20 @@ class Settings(BaseSettings):
     # CORS - can be comma-separated string or list
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173"
 
-    # Sentinel Hub
-    sentinel_hub_client_id: str = ""
-    sentinel_hub_client_secret: str = ""
+    # Sentinel Hub (matches .env variable names)
+    sentinelhub_client_id: str = ""
+    sentinelhub_client_secret: str = ""
+
+    # Expose with backward-compatible property names
+    @property
+    def sentinel_hub_client_id(self) -> str:
+        """Backward compatible property"""
+        return self.sentinelhub_client_id
+
+    @property
+    def sentinel_hub_client_secret(self) -> str:
+        """Backward compatible property"""
+        return self.sentinelhub_client_secret
 
     # Logging
     log_level: str = "INFO"
@@ -45,4 +62,4 @@ class Settings(BaseSettings):
     
     def validate_credentials(self) -> bool:
         """Check if Sentinel Hub credentials are configured"""
-        return bool(self.sentinel_hub_client_id and self.sentinel_hub_client_secret)
+        return bool(self.sentinelhub_client_id and self.sentinelhub_client_secret)
