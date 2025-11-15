@@ -952,27 +952,6 @@ def generate_smart_seeds(embeddings, n_clusters=5):
   6. Generar reporte (JSON + visualizaciones)
 ---
 
-### US-012: Implementar análisis jerárquico
-
-- **Como** usuario
-- **Quiero** ver análisis jerárquico (objeto → estrés)
-- **Para que** pueda entender qué objeto tiene estrés y cuánto
-
-**Criterios de Aceptación:**
-- ✅ Primero: segmentación semántica (identificar objetos)
-- ✅ Luego: análisis NDVI interno de cada objeto
-- ✅ Reporte estructurado por objeto:
-  - ID del objeto
-  - NDVI promedio
-  - Distribución de estrés interno (alto/medio/bajo)
-  - Área en hectáreas
-- ✅ Visualización con colores por estrés interno
-
-**Estimación:** 4 horas  
-**Responsable:** Carlos Bocanegra  
-**Estado:** ⏳ Pendiente
-
----
 
 **Entregable Día 7:** Sistema híbrido completo con comparativa A/B
 
@@ -980,7 +959,7 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 #### **Épica 3: Documentación y Entrega (Días 8-10)**
 
-### US-13: Crear Google Colab ejecutable
+### US-12: Crear Google Colab ejecutable
 
 - **Como** equipo
 - **Quiero** crear un Google Colab ejecutable de principio a fin
@@ -1002,7 +981,7 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 ---
 
-### US-14: Redactar artículo científico
+### US-13: Redactar artículo científico
 
 - **Como** documentador
 - **Quiero** redactar un artículo científico completo
@@ -1041,7 +1020,7 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 ---
 
-### US-15: Grabar video tutorial
+### US-14: Grabar video tutorial
 
 - **Como** equipo
 - **Quiero** grabar un video tutorial de 5-10 minutos
@@ -1068,7 +1047,7 @@ def generate_smart_seeds(embeddings, n_clusters=5):
 
 ---
 
-### US-16: Crear presentación para clase
+### US-15: Crear presentación para clase
 
 - **Como** presentador
 - **Quiero** crear una presentación profesional

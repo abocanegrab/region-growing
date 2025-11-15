@@ -1,0 +1,7 @@
+Métrica,Classic RG,MGRG,Mejora (%),Ganador
+mIoU,0.0168 ± 0.0124,0.0205 ± 0.0173,+22.3%,✅ MGRG
+Weighted mIoU,0.0057 ± 0.0073,0.0075 ± 0.0098,+31.3%,✅ MGRG
+Macro F1,0.0159 ± 0.0115,0.0192 ± 0.0157,+20.3%,✅ MGRG
+Precision,0.0152 ± 0.0154,0.0140 ± 0.0137,-8.2%,⚠️ Classic RG
+Recall,0.1609 ± 0.0517,0.2226 ± 0.0200,+38.3%,✅ MGRG
+Pixel Accuracy,0.0160 ± 0.0079,0.0197 ± 0.0133,+23.1%,✅ MGRG

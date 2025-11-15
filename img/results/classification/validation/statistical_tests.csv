@@ -1,0 +1,7 @@
+Métrica,t-statistic,p-value,Significancia
+mIoU,1.019,0.4155,ns (no significativo)
+Weighted mIoU,1.001,0.4223,ns (no significativo)
+Macro F1,1.022,0.4144,ns (no significativo)
+Precision,-1.009,0.4194,ns (no significativo)
+Recall,2.746,0.1109,ns (no significativo)
+Pixel Accuracy,0.973,0.4332,ns (no significativo)
